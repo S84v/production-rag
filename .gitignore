@@ -4,3 +4,7 @@ __pycache__/
 
 # Environment
 .env
+
+# RAG Corpus
+data/raw/
+data/processed/
