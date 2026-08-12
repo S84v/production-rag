@@ -6,7 +6,7 @@ from production_rag.db.session import async_session_factory
 
 
 @pytest.mark.asyncio
-async def test_databse_connection():
+async def test_database_connection():
     async with async_session_factory() as session:
         assert isinstance(session, AsyncSession)
 
