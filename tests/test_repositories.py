@@ -4,6 +4,7 @@ import pytest
 
 from production_rag.db.session import async_session_factory
 from production_rag.models.collection import Collection
+from production_rag.repositories.chunk import ChunkRepository
 from production_rag.repositories.document import DocumentRepository
 from production_rag.repositories.document_version import DocumentVersionRepository
 
@@ -89,5 +90,72 @@ async def test_document_version_repository_create_and_find_by_content_hash():
 
         assert found is not None
         assert found.id == version.id
+
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_chunk_repository_create_find_and_list():
+
+    async with async_session_factory() as session:
+        collection = Collection(
+            name=f"test-chunk-repository-{uuid.uuid4()}",
+            description="Chunk repository integration test",
+        )
+
+        session.add(collection)
+        await session.flush()
+
+        document_repository = DocumentRepository(session)
+
+        document = await document_repository.create(
+            collection_id=collection.id,
+            source="fastapi",
+            source_uri="fastapi/chunk-test.md",
+        )
+
+        version_repository = DocumentVersionRepository(session)
+
+        version = await version_repository.create(
+            document_id=document.id,
+            content_hash="d" * 64,
+        )
+
+        chunk_repository = ChunkRepository(session)
+
+        chunk_1 = await chunk_repository.create(
+            document_version_id=version.id,
+            chunk_index=1,
+            content="Second chunk",
+            token_count=2,
+            chunk_metadata={"heading": "Second"},
+        )
+
+        chunk_0 = await chunk_repository.create(
+            document_version_id=version.id,
+            chunk_index=0,
+            content="First chunk",
+            token_count=2,
+            chunk_metadata={"heading": "First"},
+        )
+
+        found = await chunk_repository.find_by_index(
+            document_version_id=version.id, chunk_index=1
+        )
+
+        assert found is not None
+        assert found.id == chunk_1.id
+        assert found.content == "Second chunk"
+
+        chunks = await chunk_repository.list_by_document_version(
+            document_version_id=version.id
+        )
+
+        assert [chunk.id for chunk in chunks] == [
+            chunk_0.id,
+            chunk_1.id,
+        ]
+
+        assert [chunk.chunk_index for chunk in chunks] == [0, 1]
 
         await session.rollback()
