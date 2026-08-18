@@ -26,7 +26,7 @@ class ChunkRepository:
     async def create(
         self,
         document_version_id: UUID,
-        chunk_index: str,
+        chunk_index: int,
         content: str,
         token_count: int | None = None,
         chunk_metadata: dict | None = None,
