@@ -2,6 +2,7 @@ from uuid import UUID
 
 from production_rag.db.session import async_session_factory
 from production_rag.ingestion.chunker import MarkdownChunker
+from production_rag.ingestion.source import SourceDocument
 from production_rag.models.document import Document
 from production_rag.models.document_version import DocumentVersion
 from production_rag.repositories.chunk import ChunkRepository
@@ -10,6 +11,22 @@ from production_rag.repositories.document_version import DocumentVersionReposito
 
 
 class DocumentIngestionService:
+    async def ingest_source_document(
+        self,
+        collection_id: UUID,
+        source_document: SourceDocument,
+    ) -> tuple[Document, DocumentVersion, bool]:
+
+        return await self.ingest_document(
+            collection_id=collection_id,
+            source=source_document.source,
+            source_uri=source_document.source_uri,
+            content=source_document.content,
+            content_hash=source_document.content_hash,
+            title=source_document.title,
+            source_revision=source_document.source_revision,
+        )
+
     async def ingest_document(
         self,
         collection_id: UUID,

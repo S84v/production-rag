@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 from production_rag.db.session import async_session_factory
+from production_rag.ingestion.filesystem import FilesystemSource
 from production_rag.models.collection import Collection
 from production_rag.repositories.chunk import ChunkRepository
 from production_rag.services.document_ingestion import DocumentIngestionService
@@ -141,3 +142,73 @@ async def test_document_ingestion_creates_chunks_for_new_version():
     assert len(chunks) > 0
     assert [chunk.chunk_index for chunk in chunks] == list(range(len(chunks)))
     assert chunks[0].content.startswith("# Introduction")
+
+
+@pytest.mark.asyncio
+async def test_source_document_can_be_ingested(tmp_path):
+    content = "# Introduction\n\nFastAPI is a web framework."
+    document_path = tmp_path / "fastapi.md"
+    document_path.write_text(content, encoding="utf-8")
+
+    source = FilesystemSource(tmp_path)
+    source_document = source.acquire(document_path)
+
+    collection_id = await create_test_collection()
+    service = DocumentIngestionService()
+
+    document, version, created = await service.ingest_source_document(
+        collection_id=collection_id, source_document=source_document
+    )
+
+    assert created is True
+    assert document.collection_id == collection_id
+    assert document.source == "filesystem"
+    assert document.source_uri == "filesystem://fastapi.md"
+
+    assert version.document_id == document.id
+    assert version.content_hash == source_document.content_hash
+
+    async with async_session_factory() as session:
+        chunk_repository = ChunkRepository(session)
+
+        chunks = await chunk_repository.list_by_document_version(version.id)
+
+    assert len(chunks) > 0
+    assert chunks[0].content.startswith("# Introduction")
+
+
+@pytest.mark.asyncio
+async def test_source_document_ingestion_is_idempotent(tmp_path):
+    content = "# FastAPI\n\nA web framework."
+    document_path = tmp_path / "fastapi.md"
+    document_path.write_text(content, encoding="utf-8")
+
+    source = FilesystemSource(tmp_path)
+    source_document = source.acquire(document_path)
+
+    collection_id = await create_test_collection()
+    service = DocumentIngestionService()
+
+    (
+        first_document,
+        first_version,
+        first_created,
+    ) = await service.ingest_source_document(
+        collection_id=collection_id,
+        source_document=source_document,
+    )
+
+    (
+        second_document,
+        second_version,
+        second_created,
+    ) = await service.ingest_source_document(
+        collection_id=collection_id,
+        source_document=source_document,
+    )
+
+    assert first_created is True
+    assert second_created is False
+
+    assert second_document.id == first_document.id
+    assert second_version.id == first_version.id
