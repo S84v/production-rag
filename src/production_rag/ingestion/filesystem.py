@@ -8,6 +8,9 @@ class FilesystemSource:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
 
+    def discover(self) -> list[Path]:
+        return sorted(path for path in self.root.rglob("*.md") if path.is_file())
+
     def acquire(self, path: Path) -> SourceDocument:
         resolved_path = path.resolve()
 

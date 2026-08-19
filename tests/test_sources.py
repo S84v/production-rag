@@ -22,7 +22,7 @@ def test_filesystem_source_reads_markdown_file(tmp_path):
     assert document.source_revision is not None
 
 
-def test_filesystem_source_uses_relative_deterministic_urt(tmp_path):
+def test_filesystem_source_uses_relative_deterministic_uri(tmp_path):
     nested_dir = tmp_path / "fastapi"
     nested_dir.mkdir()
 
