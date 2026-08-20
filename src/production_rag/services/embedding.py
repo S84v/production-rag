@@ -27,3 +27,12 @@ class EmbeddingService:
                 dimensions=len(vector),
                 vector_key=str(chunk.id),
             )
+
+    async def embed_chunks(self, chunks: list[Chunk]) -> list[Embedding]:
+        embeddings = []
+
+        for chunk in chunks:
+            embedding = await self.embed_chunk(chunk)
+            embeddings.append(embedding)
+
+        return embeddings

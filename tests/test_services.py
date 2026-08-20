@@ -342,3 +342,48 @@ async def test_embedding_service_creates_embedding_for_chunk():
     assert embedding.model_version == "1"
     assert embedding.dimensions == 384
     assert embedding.vector_key == str(chunks[0].id)
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_creates_embeddings_for_chunks():
+    collection_id = await create_test_collection()
+    document_ingestion_service = DocumentIngestionService()
+
+    _, version, created = await document_ingestion_service.ingest_document(
+        collection_id=collection_id,
+        source="fastapi",
+        source_uri=f"fastapi/embedding-batch-{uuid.uuid4()}.md",
+        content=(
+            "# First Section\n\n"
+            "This is the first section.\n\n"
+            "## Section Section\n\n"
+            "This is the second section."
+        ),
+        content_hash="h" * 64,
+    )
+
+    assert created is True
+
+    async with async_session_factory() as session:
+        chunk_repository = ChunkRepository(session)
+        chunks = await chunk_repository.list_by_document_version(version.id)
+
+    assert len(chunks) > 1
+
+    embedding_service = EmbeddingService()
+
+    embeddings = await embedding_service.embed_chunks(chunks)
+
+    assert len(embeddings) == len(chunks)
+    assert [embedding.chunk_id for embedding in embeddings] == [
+        chunk.id for chunk in chunks
+    ]
+
+    assert all(embedding.dimensions == 384 for embedding in embeddings)
+
+    second_embeddings = await embedding_service.embed_chunks(chunks)
+
+    assert len(second_embeddings) == len(embeddings)
+    assert [embedding.id for embedding in second_embeddings] == [
+        embedding.id for embedding in embeddings
+    ]
