@@ -9,6 +9,7 @@ from production_rag.models.collection import Collection
 from production_rag.repositories.chunk import ChunkRepository
 from production_rag.services.batch_ingestion import BatchIngestionService
 from production_rag.services.document_ingestion import DocumentIngestionService
+from production_rag.services.embedding import EmbeddingService
 
 
 async def create_test_collection() -> uuid.UUID:
@@ -309,3 +310,35 @@ async def test_filesystem_batch_ingestion_processes_fastapi_corpus():
     discovered_paths = source.discover()
 
     assert len(results) == len(discovered_paths)
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_creates_embedding_for_chunk():
+    collecion_id = await create_test_collection()
+    document_ingestion_service = DocumentIngestionService()
+
+    document, version, created = await document_ingestion_service.ingest_document(
+        collection_id=collecion_id,
+        source="fastapi",
+        source_uri=f"fastapi/embedding-{uuid.uuid4()}.md",
+        content="# Embedding Test\n\nThis is embedding test content.",
+        content_hash="g" * 64,
+    )
+
+    assert created is True
+
+    async with async_session_factory() as session:
+        chunk_repository = ChunkRepository(session)
+        chunks = await chunk_repository.list_by_document_version(version.id)
+
+    assert len(chunks) > 0
+
+    embedding_service = EmbeddingService()
+
+    embedding = await embedding_service.embed_chunk(chunks[0])
+
+    assert embedding.chunk_id == chunks[0].id
+    assert embedding.model_name == "BAAI/bge-small-en-v1.5"
+    assert embedding.model_version == "1"
+    assert embedding.dimensions == 384
+    assert embedding.vector_key == str(chunks[0].id)
