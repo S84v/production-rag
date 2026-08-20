@@ -1,12 +1,14 @@
 import uuid
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from production_rag.db.session import async_session_factory
 from production_rag.models.collection import Collection
 from production_rag.repositories.chunk import ChunkRepository
 from production_rag.repositories.document import DocumentRepository
 from production_rag.repositories.document_version import DocumentVersionRepository
+from production_rag.repositories.embedding import EmbeddingRepository
 
 
 @pytest.mark.asyncio
@@ -157,5 +159,125 @@ async def test_chunk_repository_create_find_and_list():
         ]
 
         assert [chunk.chunk_index for chunk in chunks] == [0, 1]
+
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_embedding_repository_create_and_find_by_chunk_and_model():
+    async with async_session_factory() as session:
+        collection = Collection(
+            name=f"test-embedding-repository-{uuid.uuid4()}",
+            description="Embedding repository integration test",
+        )
+
+        session.add(collection)
+        await session.flush()
+
+        document_repository = DocumentRepository(session)
+
+        document = await document_repository.create(
+            collection_id=collection.id,
+            source="fastapi",
+            source_uri="fastapi/embedding-test.md",
+        )
+
+        version_repository = DocumentVersionRepository(session)
+
+        version = await version_repository.create(
+            document_id=document.id,
+            content_hash="e" * 64,
+        )
+
+        chunk_repository = ChunkRepository(session)
+
+        chunk = await chunk_repository.create(
+            document_version_id=version.id,
+            chunk_index=0,
+            content="Embedding test chunk",
+        )
+
+        embedding_repository = EmbeddingRepository(session)
+
+        embedding = await embedding_repository.create(
+            chunk_id=chunk.id,
+            model_name="BAAI/bge-small-en-v1.5",
+            model_version="1",
+            dimensions=384,
+            vector_key=str(chunk.id),
+        )
+
+        assert embedding.id is not None
+        assert embedding.chunk_id == chunk.id
+        assert embedding.model_name == "BAAI/bge-small-en-v1.5"
+        assert embedding.model_version == "1"
+        assert embedding.dimensions == 384
+        assert embedding.vector_key == str(chunk.id)
+
+        found = await embedding_repository.find_by_chunk_and_model(
+            chunk_id=chunk.id,
+            model_name="BAAI/bge-small-en-v1.5",
+            model_version="1",
+        )
+
+        assert found is not None
+        assert found.id == embedding.id
+
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_embedding_repository_rejects_duplicate_chunk_model_version():
+
+    async with async_session_factory() as session:
+        collection = Collection(
+            name=f"test-embedding-uniqie-{uuid.uuid4()}",
+            description="Embedding uniqueness integration test",
+        )
+
+        session.add(collection)
+        await session.flush()
+
+        document_repository = DocumentRepository(session)
+
+        document = await document_repository.create(
+            collection_id=collection.id,
+            source="fastapi",
+            source_uri="fastapi/embedding-unique-test.md",
+        )
+
+        version_repository = DocumentVersionRepository(session)
+
+        version = await version_repository.create(
+            document_id=document.id,
+            content_hash="f" * 64,
+        )
+
+        chunk_repository = ChunkRepository(session)
+
+        chunk = await chunk_repository.create(
+            document_version_id=version.id,
+            chunk_index=0,
+            content="Embedding uniquenes test chunk",
+        )
+
+        embedding_repository = EmbeddingRepository(session)
+
+        await embedding_repository.create(
+            chunk_id=chunk.id,
+            model_name="BAAI/bge-small-en-v1.5",
+            model_version="1",
+            dimensions=384,
+            vector_key=str(chunk.id),
+        )
+
+        with pytest.raises(IntegrityError):
+            await embedding_repository.create(
+                chunk_id=chunk.id,
+                model_name="BAAI/bge-small-en-v1.5",
+                model_version="1",
+                dimensions=384,
+                vector_key=str(chunk.id),
+            )
 
         await session.rollback()
