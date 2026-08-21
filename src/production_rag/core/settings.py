@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
 
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf_8",
