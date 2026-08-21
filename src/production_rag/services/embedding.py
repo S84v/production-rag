@@ -1,3 +1,5 @@
+from sentence_transformers import SentenceTransformer
+
 from production_rag.db.session import async_session_factory
 from production_rag.models.chunk import Chunk
 from production_rag.models.embedding import Embedding
@@ -5,8 +7,17 @@ from production_rag.repositories.embedding import EmbeddingRepository
 
 
 class EmbeddingService:
+    def __init__(self, encoder=None) -> None:
+        self.encoder = encoder
+
+    def _get_encoder(self):
+        if self.encoder is None:
+            self.encoder = SentenceTransformer("BAAI/bge-small-en-v1.5")
+
+        return self.encoder
+
     async def embed_chunk(self, chunk: Chunk) -> Embedding:
-        vector = [0.0] * 384
+        vector = self._get_encoder().encode(chunk.content)
 
         async with async_session_factory() as session, session.begin():
             repository = EmbeddingRepository(session)
