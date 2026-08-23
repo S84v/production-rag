@@ -1,34 +1,10 @@
 import uuid
 
 import pytest
+from qdrant_client.models import Distance
 
 from production_rag.services.qdrant import QdrantVectorStore
-
-
-class FakeQdrantClient:
-    def __init__(self) -> None:
-        self.collections = []
-        self.created_collections = []
-        self.upserted_points = []
-
-    async def get_collections(self):
-        return type(
-            "CollectionResponse",
-            (),
-            {
-                "collections": [
-                    type("Collection", (), {"name": name})()
-                    for name in self.collections
-                ]
-            },
-        )()
-
-    async def create_collection(self, collection_name, vectors_config):
-        self.created_collections.append((collection_name, vectors_config))
-        self.collections.append(collection_name)
-
-    async def upsert(self, collection_name, points):
-        self.upserted_points.append((collection_name, points))
+from tests.helpers.qdrant import FakeQdrantClient
 
 
 @pytest.mark.asyncio
@@ -41,6 +17,7 @@ async def test_ensure_collection_creates_missing_collection():
     assert client.created_collections
     assert client.created_collections[0][0] == "fastapi"
     assert client.created_collections[0][1].size == 384
+    assert client.created_collections[0][1].distance == Distance.COSINE
 
 
 @pytest.mark.asyncio
@@ -68,3 +45,15 @@ async def test_upsert_creates_qdrant_point():
     assert points[0].id == str(point_id)
     assert points[0].vector == vector
     assert points[0].payload == payload
+
+
+@pytest.mark.asyncio
+async def test_ensure_collection_does_not_recreate_existing_collection():
+    client = FakeQdrantClient()
+    client.collections.append("fastapi")
+
+    store = QdrantVectorStore(client=client)
+
+    await store.ensure_collection("fastapi", 384)
+
+    assert client.created_collections == []

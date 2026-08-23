@@ -10,6 +10,8 @@ from production_rag.repositories.chunk import ChunkRepository
 from production_rag.services.batch_ingestion import BatchIngestionService
 from production_rag.services.document_ingestion import DocumentIngestionService
 from production_rag.services.embedding import EmbeddingService
+from production_rag.services.qdrant import QdrantVectorStore
+from tests.helpers.qdrant import FakeQdrantClient
 
 
 class FakeEmbeddingEncoder:
@@ -341,13 +343,16 @@ async def test_embedding_service_creates_embedding_for_chunk():
 
     embedding_service = EmbeddingService(encoder=FakeEmbeddingEncoder())
 
-    embedding = await embedding_service.embed_chunk(chunks[0])
+    embedding = await embedding_service.embed_chunk(
+        chunk=chunks[0],
+        collection_name="fastapi",
+    )
 
     assert embedding.chunk_id == chunks[0].id
     assert embedding.model_name == "BAAI/bge-small-en-v1.5"
     assert embedding.model_version == "1"
     assert embedding.dimensions == 384
-    assert embedding.vector_key == str(chunks[0].id)
+    assert embedding.vector_key == str(embedding.id)
 
 
 @pytest.mark.asyncio
@@ -378,7 +383,10 @@ async def test_embedding_service_creates_embeddings_for_chunks():
 
     embedding_service = EmbeddingService(encoder=FakeEmbeddingEncoder())
 
-    embeddings = await embedding_service.embed_chunks(chunks)
+    embeddings = await embedding_service.embed_chunks(
+        chunks=chunks,
+        collection_name="fastapi",
+    )
 
     assert len(embeddings) == len(chunks)
     assert [embedding.chunk_id for embedding in embeddings] == [
@@ -387,7 +395,10 @@ async def test_embedding_service_creates_embeddings_for_chunks():
 
     assert all(embedding.dimensions == 384 for embedding in embeddings)
 
-    second_embeddings = await embedding_service.embed_chunks(chunks)
+    second_embeddings = await embedding_service.embed_chunks(
+        chunks=chunks,
+        collection_name="fastapi",
+    )
 
     assert len(second_embeddings) == len(embeddings)
     assert [embedding.id for embedding in second_embeddings] == [
@@ -418,9 +429,64 @@ async def test_embedding_service_uses_real_embedding_model():
 
     embedding_service = EmbeddingService()
 
-    embedding = await embedding_service.embed_chunk(chunks[0])
+    embedding = await embedding_service.embed_chunk(
+        chunk=chunks[0],
+        collection_name="fastapi",
+    )
 
     assert embedding.chunk_id == chunks[0].id
     assert embedding.model_name == "BAAI/bge-small-en-v1.5"
     assert embedding.model_version == "1"
     assert embedding.dimensions == 384
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_persists_vector_in_qdrant():
+    collection_id = await create_test_collection()
+
+    document_ingestion_service = DocumentIngestionService()
+
+    _, version, created = await document_ingestion_service.ingest_document(
+        collection_id=collection_id,
+        source="fastapi",
+        source_uri=f"fastapi/embedding-qdrant-{uuid.uuid4()}.md",
+        content="# Qdrant Test\n\nThis tests Qdrant persistence.",
+        content_hash="j" * 64,
+    )
+
+    assert created is True
+
+    async with async_session_factory() as session:
+        chunk_repository = ChunkRepository(session)
+        chunks = await chunk_repository.list_by_document_version(version.id)
+
+    assert chunks
+
+    qdrant_client = FakeQdrantClient()
+    vector_store = QdrantVectorStore(client=qdrant_client)
+
+    embedding_service = EmbeddingService(
+        encoder=FakeEmbeddingEncoder(),
+        vector_store=vector_store,
+    )
+
+    embedding = await embedding_service.embed_chunk(
+        chunk=chunks[0], collection_name="fastapi"
+    )
+
+    assert len(qdrant_client.upserted_points) == 1
+
+    collection_name, points = qdrant_client.upserted_points[0]
+
+    assert collection_name == "fastapi"
+    assert len(points) == 1
+
+    point = points[0]
+
+    assert point.id == str(embedding.id)
+    assert point.vector == [0.0] * 384
+    assert point.payload["embedding_id"] == str(embedding.id)
+    assert point.payload["chunk_id"] == str(chunks[0].id)
+    assert point.payload["model_name"] == "BAAI/bge-small-en-v1.5"
+    assert point.payload["model_version"] == "1"
+    assert point.payload["chunk_index"] == chunks[0].chunk_index
