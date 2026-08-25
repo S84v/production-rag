@@ -7,6 +7,7 @@ from production_rag.db.session import async_session_factory
 from production_rag.ingestion.filesystem import FilesystemSource
 from production_rag.models.collection import Collection
 from production_rag.repositories.chunk import ChunkRepository
+from production_rag.repositories.embedding import EmbeddingRepository
 from production_rag.services.batch_ingestion import BatchIngestionService
 from production_rag.services.document_ingestion import DocumentIngestionService
 from production_rag.services.embedding import EmbeddingService
@@ -489,3 +490,106 @@ async def test_embedding_service_persists_vector_in_qdrant():
     assert point.payload["model_name"] == "BAAI/bge-small-en-v1.5"
     assert point.payload["model_version"] == "1"
     assert point.payload["chunk_index"] == chunks[0].chunk_index
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_repairs_missing_qdrant_point():
+    collection_id = await create_test_collection()
+
+    document_ingestion_service = DocumentIngestionService()
+
+    _, version, created = await document_ingestion_service.ingest_document(
+        collection_id=collection_id,
+        source="fastapi",
+        source_uri=f"fastapi/embedding-recovery-{uuid.uuid4()}.md",
+        content="# Recovery Test\n\nThis tests Qdrant point recovery.",
+        content_hash="k" * 64,
+    )
+
+    assert created is True
+
+    async with async_session_factory() as session:
+        chunk_repository = ChunkRepository(session)
+        chunks = await chunk_repository.list_by_document_version(version.id)
+
+    assert chunks
+
+    qdrant_client = FakeQdrantClient()
+    vector_store = QdrantVectorStore(client=qdrant_client)
+
+    embedding_service = EmbeddingService(
+        encoder=FakeEmbeddingEncoder(), vector_store=vector_store
+    )
+
+    first_embedding = await embedding_service.embed_chunk(
+        chunk=chunks[0],
+        collection_name="fastapi",
+    )
+
+    assert len(qdrant_client.upserted_points) == 1
+
+    qdrant_client.upserted_points.clear()
+
+    second_embedding = await embedding_service.embed_chunk(
+        chunk=chunks[0],
+        collection_name="fastapi",
+    )
+
+    assert second_embedding.id == first_embedding.id
+    assert len(qdrant_client.upserted_points) == 1
+
+    collection_name, points = qdrant_client.upserted_points[0]
+
+    assert collection_name == "fastapi"
+    assert len(points) == 1
+
+    point = points[0]
+
+    assert point.id == str(first_embedding.id)
+    assert point.vector == [0.0] * 384
+    assert point.payload["embedding_id"] == str(first_embedding.id)
+    assert point.payload["chunk_id"] == str(chunks[0].id)
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_does_not_persist_embedding_when_qdrant_fails():
+    collection_id = await create_test_collection()
+
+    document_ingestion_service = DocumentIngestionService()
+
+    _, version, created = await document_ingestion_service.ingest_document(
+        collection_id=collection_id,
+        source="fastapi",
+        source_uri=f"fastapi/embedding-failure-{uuid.uuid4()}.md",
+        content="# Failure Test\n\nThis tests Qdrant failure handling.",
+        content_hash="l" * 64,
+    )
+
+    assert created is True
+
+    async with async_session_factory() as session:
+        chunk_repository = ChunkRepository(session)
+        chunks = await chunk_repository.list_by_document_version(version.id)
+
+    assert chunks
+
+    qdrant_client = FakeQdrantClient(fail_on_upsert=True)
+    vector_store = QdrantVectorStore(client=qdrant_client)
+
+    embedding_service = EmbeddingService(
+        encoder=FakeEmbeddingEncoder(), vector_store=vector_store
+    )
+
+    with pytest.raises(RuntimeError, match="Qdrant upsert failed"):
+        await embedding_service.embed_chunk(chunk=chunks[0], collection_name="fastapi")
+
+    async with async_session_factory() as session:
+        repository = EmbeddingRepository(session)
+
+        embedding = await repository.find_by_chunk_and_model(
+            chunk_id=chunks[0].id,
+            model_name=EmbeddingService.MODEL_NAME,
+            model_version=EmbeddingService.MODEL_VERSION,
+        )
+
+    assert embedding is None
