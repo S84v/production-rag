@@ -32,7 +32,6 @@ class EmbeddingRepository:
         model_name: str,
         model_version: str,
         dimensions: int,
-        vector_key: str,
     ) -> Embedding:
 
         embedding = Embedding(
@@ -40,7 +39,6 @@ class EmbeddingRepository:
             model_name=model_name,
             model_version=model_version,
             dimensions=dimensions,
-            vector_key=vector_key,
         )
 
         self.session.add(embedding)

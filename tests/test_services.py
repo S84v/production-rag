@@ -352,7 +352,6 @@ async def test_embedding_service_creates_embedding_for_chunk():
     assert embedding.model_name == "BAAI/bge-small-en-v1.5"
     assert embedding.model_version == "1"
     assert embedding.dimensions == 384
-    assert embedding.vector_key == str(embedding.id)
 
 
 @pytest.mark.asyncio

@@ -47,10 +47,8 @@ class EmbeddingService:
                     model_name=self.MODEL_NAME,
                     model_version=self.MODEL_VERSION,
                     dimensions=len(vector),
-                    vector_key="pending",
                 )
 
-                embedding.vector_key = str(embedding.id)
                 await session.flush()
 
             await self.vector_store.ensure_collection(

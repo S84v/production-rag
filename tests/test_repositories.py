@@ -204,7 +204,6 @@ async def test_embedding_repository_create_and_find_by_chunk_and_model():
             model_name="BAAI/bge-small-en-v1.5",
             model_version="1",
             dimensions=384,
-            vector_key=str(chunk.id),
         )
 
         assert embedding.id is not None
@@ -212,7 +211,6 @@ async def test_embedding_repository_create_and_find_by_chunk_and_model():
         assert embedding.model_name == "BAAI/bge-small-en-v1.5"
         assert embedding.model_version == "1"
         assert embedding.dimensions == 384
-        assert embedding.vector_key == str(chunk.id)
 
         found = await embedding_repository.find_by_chunk_and_model(
             chunk_id=chunk.id,
@@ -268,7 +266,6 @@ async def test_embedding_repository_rejects_duplicate_chunk_model_version():
             model_name="BAAI/bge-small-en-v1.5",
             model_version="1",
             dimensions=384,
-            vector_key=str(chunk.id),
         )
 
         with pytest.raises(IntegrityError):
@@ -277,7 +274,6 @@ async def test_embedding_repository_rejects_duplicate_chunk_model_version():
                 model_name="BAAI/bge-small-en-v1.5",
                 model_version="1",
                 dimensions=384,
-                vector_key=str(chunk.id),
             )
 
         await session.rollback()
