@@ -35,3 +35,17 @@ class QdrantVectorStore:
             collection_name=collection_name,
             points=[PointStruct(id=str(point_id), vector=vector, payload=payload)],
         )
+
+    async def search(
+        self, collection_name: str, vector: list[float], limit: int
+    ) -> list[tuple[UUID, float]]:
+
+        response = await self.client.query_points(
+            collection_name=collection_name,
+            query=vector,
+            limit=limit,
+            with_payload=False,
+            with_vectors=False,
+        )
+
+        return [(UUID(str(point.id)), point.score) for point in response.points]

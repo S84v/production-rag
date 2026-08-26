@@ -23,6 +23,14 @@ class EmbeddingService:
 
         return self.encoder
 
+    def encode_query(self, query: str) -> list[float]:
+        vector = self._get_encoder().encode(query)
+
+        if hasattr(vector, "tolist"):
+            vector = vector.tolist()
+
+        return vector
+
     async def embed_chunk(self, chunk: Chunk, collection_name: str) -> Embedding:
         async with async_session_factory() as session, session.begin():
             repository = EmbeddingRepository(session)

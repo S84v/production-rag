@@ -57,3 +57,28 @@ async def test_ensure_collection_does_not_recreate_existing_collection():
     await store.ensure_collection("fastapi", 384)
 
     assert client.created_collections == []
+
+
+@pytest.mark.asyncio
+async def test_search_returns_point_ids_and_scores():
+    point_id = uuid.uuid4()
+
+    point = type(
+        "ScoredPoint",
+        (),
+        {
+            "id": str(point_id),
+            "score": 0.91,
+        },
+    )()
+
+    client = FakeQdrantClient(query_results=[point])
+    store = QdrantVectorStore(client=client)
+
+    results = await store.search(
+        collection_name="fastapi",
+        vector=[0.1, 0.2, 0.3],
+        limit=5,
+    )
+
+    assert results == [(point_id, 0.91)]
