@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from production_rag.services.rag import RAGService
+from production_rag.services.rag import RAGEvent, RAGService, RAGSource
 
 
 class FakeRetrievalService:
@@ -32,13 +32,21 @@ async def test_rag_service_retrieves_context_and_streams_answer():
     retrieval_service = FakeRetrievalService(
         [
             SimpleNamespace(
-                chunk=SimpleNamespace(content="FastAPI is a Python web framework."),
+                chunk=SimpleNamespace(
+                    content="FastAPI is a Python web framework.",
+                    chunk_index=0,
+                ),
+                source="fastapi",
+                source_uri="docs/index.md",
                 score=0.95,
             ),
             SimpleNamespace(
                 chunk=SimpleNamespace(
-                    content="FastAPI uses standard Python type hints."
+                    content="FastAPI uses standard Python type hints.",
+                    chunk_index=1,
                 ),
+                source="fastapi",
+                source_uri="docs/features.md",
                 score=0.90,
             ),
         ]
@@ -53,17 +61,38 @@ async def test_rag_service_retrieves_context_and_streams_answer():
 
     service = RAGService(retrieval_service=retrieval_service, llm_service=llm_service)
 
-    chunks = [
-        chunk
-        async for chunk in service.generate(
+    events = [
+        event
+        async for event in service.generate(
             query="What is FastAPI?", collection_name="fastapi", limit=2
         )
     ]
 
-    assert chunks == [
-        "FastAPI",
-        " is a Python web framework.",
-    ]
+    assert events[0] == RAGEvent(
+        type="sources",
+        sources=[
+            RAGSource(
+                source="fastapi",
+                source_uri="docs/index.md",
+                chunk_index=0,
+                score=0.95,
+            ),
+            RAGSource(
+                source="fastapi",
+                source_uri="docs/features.md",
+                chunk_index=1,
+                score=0.90,
+            ),
+        ],
+    )
+
+    text = "".join(
+        event.text
+        for event in events
+        if event.type == "text" and event.text is not None
+    )
+
+    assert text == "FastAPI is a Python web framework."
 
     assert retrieval_service.calls == [
         {
@@ -102,14 +131,19 @@ async def test_rag_service_handles_no_retrieved_context():
         llm_service=llm_service,
     )
 
-    chunks = [
-        chunk
-        async for chunk in service.generate(
+    events = [
+        event
+        async for event in service.generate(
             query="What is FastAPI?", collection_name="fastapi"
         )
     ]
 
-    assert chunks == ["I do not have enough information."]
+    assert events[0] == RAGEvent(type="sources", sources=[])
+
+    assert events[1] == RAGEvent(
+        type="text",
+        text="I do not have enough information.",
+    )
 
     assert llm_service.calls[0]["prompt"] == (
         "Question:\nWhat is FastAPI?\n\nRetrieved context:\n"

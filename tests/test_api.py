@@ -1,8 +1,11 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 from production_rag.api.query import get_rag_service
 from production_rag.main import app
+from production_rag.services.rag import RAGEvent, RAGSource
 
 
 class FakeRAGService:
@@ -18,8 +21,20 @@ class FakeRAGService:
             }
         )
 
-        yield "FastAPI"
-        yield " is a web framework."
+        yield RAGEvent(
+            type="sources",
+            sources=[
+                RAGSource(
+                    source="fastapi",
+                    source_uri="docs/index.md",
+                    chunk_index=0,
+                    score=0.95,
+                )
+            ],
+        )
+
+        yield RAGEvent(type="text", text="FastAPI")
+        yield RAGEvent(type="text", text=" is a web framework.")
 
 
 @pytest.fixture
@@ -52,7 +67,27 @@ def test_query_endpoint_streams_rag_response(
     )
 
     assert response.status_code == 200
-    assert response.text == "FastAPI is a web framework."
+    assert response.headers["content-type"] == "application/x-ndjson"
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+
+    assert events == [
+        {
+            "type": "sources",
+            "sources": [
+                {
+                    "source": "fastapi",
+                    "source_uri": "docs/index.md",
+                    "chunk_index": 0,
+                    "score": 0.95,
+                }
+            ],
+        },
+        {
+            "type": "text",
+            "text": "FastAPI is a web framework.",
+        },
+    ]
 
     assert fake_rag_service.calls == [
         {

@@ -1,7 +1,23 @@
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 from production_rag.services.llm import LLMService
 from production_rag.services.retrieval import RetrievalService
+
+
+@dataclass
+class RAGSource:
+    source: str
+    source_uri: str
+    chunk_index: int
+    score: float
+
+
+@dataclass
+class RAGEvent:
+    type: str
+    text: str | None = None
+    sources: list[RAGSource] | None = None
 
 
 class RAGService:
@@ -18,9 +34,24 @@ class RAGService:
         query: str,
         collection_name: str,
         limit: int = 5,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[RAGEvent]:
         results = await self.retrieval_service.retrieve(
             query=query, collection_name=collection_name, limit=limit
+        )
+
+        sources = [
+            RAGSource(
+                source=result.source,
+                source_uri=result.source_uri,
+                chunk_index=result.chunk.chunk_index,
+                score=result.score,
+            )
+            for result in results
+        ]
+
+        yield RAGEvent(
+            type="sources",
+            sources=sources,
         )
 
         context = "\n\n".join(
@@ -37,8 +68,8 @@ class RAGService:
             "Do not invent facts."
         )
 
-        async for chunk in self.llm_service.generate(
+        async for text in self.llm_service.generate(
             prompt=prompt,
             instructions=instructions,
         ):
-            yield chunk
+            yield RAGEvent(type="text", text=text)
