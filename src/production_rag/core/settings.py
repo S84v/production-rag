@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
 
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-v4-flash"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf_8",
