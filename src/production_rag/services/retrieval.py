@@ -1,7 +1,7 @@
-from dataclass import dataclass
+from dataclasses import dataclass
 
 from production_rag.db.session import async_session_factory
-from production_rag.modles.chunk import Chunk
+from production_rag.models.chunk import Chunk
 from production_rag.repositories.retrieval import RetrievalRepository
 from production_rag.services.embedding import EmbeddingService
 from production_rag.services.qdrant import QdrantVectorStore
@@ -23,7 +23,7 @@ class RetrievalService:
         self.embedding_service = embedding_service or EmbeddingService()
         self.vector_store = vector_store or QdrantVectorStore()
 
-    async def retrieval(
+    async def retrieve(
         self, query: str, collection_name: str, limit: int = 5
     ) -> list[RetrievalResult]:
         vector = self.embedding_service.encode_query(query)

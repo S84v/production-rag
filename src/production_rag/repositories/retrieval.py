@@ -4,10 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from production_rag.models.chunk import Chunk
+from production_rag.models.collection import Collection
 from production_rag.models.document import Document
 from production_rag.models.document_version import DocumentVersion
 from production_rag.models.embedding import Embedding
-from production_rag.modles.collection import Collection
 
 
 class RetrievalRepository:
@@ -21,7 +21,7 @@ class RetrievalRepository:
         if not embedding_ids:
             return {}
 
-        statement = {
+        statement = (
             select(Embedding.id, Chunk)
             .join(Chunk, Chunk.id == Embedding.chunk_id)
             .join(DocumentVersion, DocumentVersion.id == Chunk.document_version_id)
@@ -31,7 +31,7 @@ class RetrievalRepository:
                 Embedding.id.in_(embedding_ids),
                 Collection.name == collection_name,
             )
-        }
+        )
 
         result = await self.session.execute(statement)
 
