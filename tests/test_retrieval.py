@@ -67,4 +67,6 @@ async def test_retrieval_service_retrieves_hydrated_chunk_from_qdrant():
     assert len(results) == 1
     assert results[0].chunk.id == chunks[0].id
     assert results[0].chunk.content == chunks[0].content
+    assert results[0].source == "test"
+    assert results[0].source_uri.startswith("test/retrieval-")
     assert results[0].score > 0

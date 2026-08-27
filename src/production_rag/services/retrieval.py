@@ -10,6 +10,8 @@ from production_rag.services.qdrant import QdrantVectorStore
 @dataclass
 class RetrievalResult:
     chunk: Chunk
+    source: str
+    source_uri: str
     score: float
 
 
@@ -42,7 +44,12 @@ class RetrievalService:
             )
 
             return [
-                RetrievalResult(chunk=chunks_by_embedding_id[embedding_id], score=score)
+                RetrievalResult(
+                    chunk=chunks_by_embedding_id[embedding_id][0],
+                    source=chunks_by_embedding_id[embedding_id][1],
+                    source_uri=chunks_by_embedding_id[embedding_id][2],
+                    score=score,
+                )
                 for embedding_id, score in hits
                 if embedding_id in chunks_by_embedding_id
             ]
