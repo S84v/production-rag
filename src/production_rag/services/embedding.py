@@ -19,7 +19,12 @@ class EmbeddingService:
 
     def _get_encoder(self):
         if self.encoder is None:
-            self.encoder = SentenceTransformer(self.MODEL_NAME)
+            from transformers import logging
+
+            logging.set_verbosity_error()
+            logging.disable_progress_bar()
+
+            self.encoder = SentenceTransformer(self.MODEL_NAME, local_files_only=True)
 
         return self.encoder
 

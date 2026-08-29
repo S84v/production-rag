@@ -11,6 +11,7 @@ from production_rag.repositories.chunk import ChunkRepository
 from production_rag.services.batch_ingestion import BatchIngestionService
 from production_rag.services.document_ingestion import DocumentIngestionService
 from production_rag.services.embedding import EmbeddingService
+from production_rag.services.rag import RAGService
 
 
 async def ingest_corpus(path: Path, collection_name: str) -> None:
@@ -65,6 +66,36 @@ async def ingest_corpus(path: Path, collection_name: str) -> None:
     print(f"Embeddings persisted: {embedding_count}")
 
 
+async def query_rag(query: str, collection_name: str, limit: int) -> None:
+    rag_service = RAGService()
+
+    sources = []
+
+    print(f"> {query}")
+    print()
+
+    async for event in rag_service.generate(
+        query=query,
+        collection_name=collection_name,
+        limit=limit,
+    ):
+        if event.type == "sources":
+            sources = event.sources or []
+
+        elif event.type == "text" and event.text is not None:
+            print(event.text, end="", flush=True)
+
+    print()
+    print()
+    print("Sources:")
+
+    for source in sources:
+        print(
+            f"- {source.source_uri} "
+            f"(chunk {source.chunk_index}, similarity: {source.score:.3f})"
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="production-rag", description="Production RAG command-line interface"
@@ -83,6 +114,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--collection", required=True, help="application collection name"
     )
 
+    query_parser = subparsers.add_parser("query", help="query the RAG system")
+
+    query_parser.add_argument(
+        "query",
+        help="question to ask",
+    )
+
+    query_parser.add_argument(
+        "--collection",
+        required=True,
+        help="application collection name",
+    )
+
+    query_parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="number of chunks to retrieve",
+    )
+
     return parser
 
 
@@ -95,3 +146,10 @@ def main() -> None:
             parser.error(f"corpus path does not exist: {args.path}")
 
         asyncio.run(ingest_corpus(path=args.path, collection_name=args.collection))
+
+    elif args.command == "query":
+        asyncio.run(
+            query_rag(
+                query=args.query, collection_name=args.collection, limit=args.limit
+            )
+        )
