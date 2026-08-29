@@ -1,0 +1,195 @@
+[
+    {
+        "id": "fastapi-001",
+        "question": "How do you declare a path parameter in FastAPI?",
+        "reference_answer": "You declare a path parameter by putting its name inside curly braces in the path, such as `/items/{item_id}`, and defining a function parameter with the same name.",
+        "relevant_sources": [
+            "path-params.md"
+        ]
+    },
+    {
+        "id": "fastapi-002",
+        "question": "How does FastAPI convert and validate path parameters?",
+        "reference_answer": "FastAPI uses the Python type annotation of the path parameter to convert the incoming value to that type and validate it. For example, an `int` parameter causes FastAPI to reject values that cannot be parsed as integers.",
+        "relevant_sources": [
+            "path-params.md"
+        ]
+    },
+    {
+        "id": "fastapi-003",
+        "question": "Why does the order of path operations matter in FastAPI?",
+        "reference_answer": "Path operations are evaluated in order, so a fixed path such as `/users/me` should be declared before a parameterized path such as `/users/{user_id}`. Otherwise, `me` could be interpreted as the value of `user_id`.",
+        "relevant_sources": [
+            "path-params.md"
+        ]
+    },
+    {
+        "id": "fastapi-004",
+        "question": "How can a FastAPI path parameter contain another path?",
+        "reference_answer": "Use the Starlette path converter syntax `{file_path:path}`, for example `/files/{file_path:path}`. This allows the parameter to contain path segments such as `home/johndoe/file.txt`.",
+        "relevant_sources": [
+            "path-params.md"
+        ]
+    },
+    {
+        "id": "fastapi-005",
+        "question": "How do you make a query parameter optional in FastAPI?",
+        "reference_answer": "Give the parameter a default value of `None`, for example `q: str | None = None`.",
+        "relevant_sources": [
+            "query-params.md"
+        ]
+    },
+    {
+        "id": "fastapi-006",
+        "question": "How does FastAPI handle boolean query parameters?",
+        "reference_answer": "FastAPI can convert common string representations from the request into Python boolean values when the parameter is annotated as `bool`.",
+        "relevant_sources": [
+            "query-params.md"
+        ]
+    },
+    {
+        "id": "fastapi-007",
+        "question": "How do you add a maximum length validation to a FastAPI query parameter?",
+        "reference_answer": "Use `Query` with `Annotated`, for example `q: Annotated[str | None, Query(max_length=50)] = None`.",
+        "relevant_sources": [
+            "query-params-str-validations.md"
+        ]
+    },
+    {
+        "id": "fastapi-008",
+        "question": "What is the recommended way to add validation metadata to FastAPI parameters?",
+        "reference_answer": "FastAPI recommends using `Annotated` to attach `Query`, `Path`, and similar metadata and validation constraints to parameters.",
+        "relevant_sources": [
+            "query-params-str-validations.md",
+            "path-params-numeric-validations.md"
+        ]
+    },
+    {
+        "id": "fastapi-009",
+        "question": "How do you declare numeric validation for a FastAPI path parameter?",
+        "reference_answer": "Use `Path` with constraints such as `ge`, `gt`, `le`, or `lt`. For example, `Path(ge=1)` requires the value to be greater than or equal to 1.",
+        "relevant_sources": [
+            "path-params-numeric-validations.md"
+        ]
+    },
+    {
+        "id": "fastapi-010",
+        "question": "How do you define a request body using Pydantic in FastAPI?",
+        "reference_answer": "Define a Pydantic model that inherits from `BaseModel`, then declare a path operation parameter using that model as its type. FastAPI reads the request body as JSON and validates it against the model.",
+        "relevant_sources": [
+            "body.md"
+        ]
+    },
+    {
+        "id": "fastapi-011",
+        "question": "What does FastAPI do when a request body is defined with a Pydantic model?",
+        "reference_answer": "FastAPI reads the body as JSON, converts values to the declared Python types when needed, validates the data, and reports validation errors when the data is invalid.",
+        "relevant_sources": [
+            "body.md"
+        ]
+    },
+    {
+        "id": "fastapi-012",
+        "question": "Can FastAPI handle nested Pydantic models?",
+        "reference_answer": "Yes. A Pydantic model can contain another Pydantic model as a field, allowing arbitrarily deeply nested request structures.",
+        "relevant_sources": [
+            "body-nested-models.md"
+        ]
+    },
+    {
+        "id": "fastapi-013",
+        "question": "How do you define a list of a specific type in a Pydantic model?",
+        "reference_answer": "Use a parameterized Python type such as `list[str]`. This tells Pydantic and FastAPI that the list elements should be strings.",
+        "relevant_sources": [
+            "body-nested-models.md"
+        ]
+    },
+    {
+        "id": "fastapi-014",
+        "question": "How do you return a response model from a FastAPI endpoint?",
+        "reference_answer": "You can annotate the path operation's return type with a Pydantic model or explicitly provide a `response_model` to the path operation decorator.",
+        "relevant_sources": [
+            "response-model.md"
+        ]
+    },
+    {
+        "id": "fastapi-015",
+        "question": "What happens if both a return type and response_model are specified?",
+        "reference_answer": "The `response_model` takes priority over the function return type for FastAPI's response validation, serialization, filtering, and documentation.",
+        "relevant_sources": [
+            "response-model.md"
+        ]
+    },
+    {
+        "id": "fastapi-016",
+        "question": "Why are response models useful for security?",
+        "reference_answer": "FastAPI uses the response model to filter returned data to the fields declared by the model. This can prevent private fields, such as a plaintext password, from being included in the API response.",
+        "relevant_sources": [
+            "response-model.md"
+        ]
+    },
+    {
+        "id": "fastapi-017",
+        "question": "How do you specify an HTTP status code for a FastAPI endpoint?",
+        "reference_answer": "Pass the desired status code to the path operation decorator using the `status_code` parameter, such as `@app.post(..., status_code=201)`.",
+        "relevant_sources": [
+            "response-status-code.md"
+        ]
+    },
+    {
+        "id": "fastapi-018",
+        "question": "How do you raise an HTTP error in FastAPI?",
+        "reference_answer": "Raise `HTTPException` rather than returning it. For example, `raise HTTPException(status_code=404, detail=\"Item not found\")`.",
+        "relevant_sources": [
+            "handling-errors.md"
+        ]
+    },
+    {
+        "id": "fastapi-019",
+        "question": "What is dependency injection in FastAPI?",
+        "reference_answer": "FastAPI's dependency injection system lets path operation functions declare dependencies they require. FastAPI resolves and calls those dependencies before executing the path operation.",
+        "relevant_sources": [
+            "dependencies/index.md"
+        ]
+    },
+    {
+        "id": "fastapi-020",
+        "question": "Can FastAPI dependencies have other dependencies?",
+        "reference_answer": "Yes. Dependencies can declare their own dependencies, allowing dependency graphs to be nested as deeply as needed.",
+        "relevant_sources": [
+            "dependencies/sub-dependencies.md"
+        ]
+    },
+    {
+        "id": "fastapi-021",
+        "question": "How does FastAPI avoid calling the same dependency multiple times?",
+        "reference_answer": "When the same dependency is required multiple times for a path operation, FastAPI can cache the dependency result and reuse it instead of calling the dependency repeatedly.",
+        "relevant_sources": [
+            "dependencies/sub-dependencies.md"
+        ]
+    },
+    {
+        "id": "fastapi-022",
+        "question": "How does OAuth2PasswordBearer obtain a token in FastAPI?",
+        "reference_answer": "OAuth2PasswordBearer reads the `Authorization` header and expects a Bearer token. It returns the token string to the path operation through FastAPI's dependency injection system.",
+        "relevant_sources": [
+            "security/first-steps.md"
+        ]
+    },
+    {
+        "id": "fastapi-023",
+        "question": "What is the purpose of the JWT subject claim in FastAPI's OAuth2 example?",
+        "reference_answer": "The JWT `sub` claim identifies the subject of the token. In the FastAPI example it is used to store the user's identification.",
+        "relevant_sources": [
+            "security/oauth2-jwt.md"
+        ]
+    },
+    {
+        "id": "fastapi-024",
+        "question": "What is FastAPI middleware?",
+        "reference_answer": "Middleware is a function that runs for every request before the request reaches its path operation and can also run after the response is generated before it is returned to the client.",
+        "relevant_sources": [
+            "middleware.md"
+        ]
+    }
+]
