@@ -11,6 +11,7 @@ class RAGSource:
     source_uri: str
     chunk_index: int
     score: float
+    content: str
 
 
 @dataclass
@@ -45,6 +46,7 @@ class RAGService:
                 source_uri=result.source_uri,
                 chunk_index=result.chunk.chunk_index,
                 score=result.score,
+                content=result.chunk.content,
             )
             for result in results
         ]

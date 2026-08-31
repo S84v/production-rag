@@ -76,12 +76,14 @@ async def test_rag_service_retrieves_context_and_streams_answer():
                 source_uri="docs/index.md",
                 chunk_index=0,
                 score=0.95,
+                content="FastAPI is a Python web framework.",
             ),
             RAGSource(
                 source="fastapi",
                 source_uri="docs/features.md",
                 chunk_index=1,
                 score=0.90,
+                content="FastAPI uses standard Python type hints.",
             ),
         ],
     )

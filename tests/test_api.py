@@ -29,6 +29,7 @@ class FakeRAGService:
                     source_uri="docs/index.md",
                     chunk_index=0,
                     score=0.95,
+                    content="FastAPI is a Python web framework.",
                 )
             ],
         )
