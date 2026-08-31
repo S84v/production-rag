@@ -110,7 +110,7 @@ def print_summary(summary: RetrievalEvaluationSummary, limit: int) -> None:
     print("=" * 20)
     print(f"Examples: {len(summary.results)}")
     print(f"Top-K: {limit}")
-    print(f"Precision@K: {summary.precision:.4f}")
+    print(f"Precision@K Documents: {summary.precision:.4f}")
     print(f"MRR: {summary.mrr:.4f}")
 
     failures = [result for result in summary.results if result.recall < 1.0]
