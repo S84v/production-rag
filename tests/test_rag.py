@@ -70,27 +70,27 @@ async def test_rag_service_retrieves_context_and_streams_answer():
         )
     ]
 
-    assert events[0] == RAGEvent(
-        type="sources",
-        sources=[
-            RAGSource(
-                source="fastapi",
-                source_uri="docs/index.md",
-                chunk_id="00000000-0000-0000-0000-000000000001",
-                chunk_index=0,
-                score=0.95,
-                content="FastAPI is a Python web framework.",
-            ),
-            RAGSource(
-                source="fastapi",
-                source_uri="docs/features.md",
-                chunk_id="00000000-0000-0000-0000-000000000002",
-                chunk_index=1,
-                score=0.90,
-                content="FastAPI uses standard Python type hints.",
-            ),
-        ],
-    )
+    assert events[0].type == "sources"
+    assert events[0].sources == [
+        RAGSource(
+            source="fastapi",
+            source_uri="docs/index.md",
+            chunk_id="00000000-0000-0000-0000-000000000001",
+            chunk_index=0,
+            score=0.95,
+            content="FastAPI is a Python web framework.",
+        ),
+        RAGSource(
+            source="fastapi",
+            source_uri="docs/features.md",
+            chunk_id="00000000-0000-0000-0000-000000000002",
+            chunk_index=1,
+            score=0.90,
+            content="FastAPI uses standard Python type hints.",
+        ),
+    ]
+    assert events[0].retrieval_time_ms is not None
+    assert events[0].retrieval_time_ms >= 0
 
     text = "".join(
         event.text
@@ -144,7 +144,10 @@ async def test_rag_service_handles_no_retrieved_context():
         )
     ]
 
-    assert events[0] == RAGEvent(type="sources", sources=[])
+    assert events[0].type == "sources"
+    assert events[0].sources == []
+    assert events[0].retrieval_time_ms is not None
+    assert events[0].retrieval_time_ms >= 0
 
     assert events[1] == RAGEvent(
         type="text",

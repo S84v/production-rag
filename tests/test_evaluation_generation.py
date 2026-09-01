@@ -56,3 +56,4 @@ async def test_evaluate_example_collects_answer_and_sources():
     assert len(result.sources) == 1
     assert result.sources[0]["chunk_id"] == "chunk-123"
     assert result.sources[0]["chunk_index"] == 8
+    assert result.retrieval_time_ms == 0.0

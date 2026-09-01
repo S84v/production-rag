@@ -1,3 +1,4 @@
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
@@ -20,6 +21,7 @@ class RAGEvent:
     type: str
     text: str | None = None
     sources: list[RAGSource] | None = None
+    retrieval_time_ms: float | None = None
 
 
 class RAGService:
@@ -37,9 +39,13 @@ class RAGService:
         collection_name: str,
         limit: int = 5,
     ) -> AsyncIterator[RAGEvent]:
+        retrieval_start = time.perf_counter()
+
         results = await self.retrieval_service.retrieve(
             query=query, collection_name=collection_name, limit=limit
         )
+
+        retrieval_time_ms = (time.perf_counter() - retrieval_start) * 1000
 
         sources = [
             RAGSource(
@@ -56,6 +62,7 @@ class RAGService:
         yield RAGEvent(
             type="sources",
             sources=sources,
+            retrieval_time_ms=retrieval_time_ms,
         )
 
         context = "\n\n".join(
