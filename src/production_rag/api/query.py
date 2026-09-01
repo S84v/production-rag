@@ -35,6 +35,7 @@ async def query(
                             "source": source.source,
                             "source_uri": source.source_uri,
                             "chunk_index": source.chunk_index,
+                            "chunk_id": source.chunk_id,
                             "score": source.score,
                         }
                         for source in event.sources or []
