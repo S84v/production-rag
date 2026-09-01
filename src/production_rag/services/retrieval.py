@@ -30,8 +30,12 @@ class RetrievalService:
     ) -> list[RetrievalResult]:
         vector = self.embedding_service.encode_query(query)
 
+        candidate_limit = limit
+
         hits = await self.vector_store.search(
-            collection_name=collection_name, vector=vector, limit=limit
+            collection_name=collection_name,
+            vector=vector,
+            limit=candidate_limit,
         )
 
         embedding_ids = [embedding_id for embedding_id, _ in hits]
@@ -40,16 +44,19 @@ class RetrievalService:
             repository = RetrievalRepository(session)
 
             chunks_by_embedding_id = await repository.find_chunks_by_embedding_ids(
-                embedding_ids=embedding_ids, collection_name=collection_name
+                embedding_ids=embedding_ids,
+                collection_name=collection_name,
             )
 
-            return [
-                RetrievalResult(
-                    chunk=chunks_by_embedding_id[embedding_id][0],
-                    source=chunks_by_embedding_id[embedding_id][1],
-                    source_uri=chunks_by_embedding_id[embedding_id][2],
-                    score=score,
-                )
-                for embedding_id, score in hits
-                if embedding_id in chunks_by_embedding_id
-            ]
+        results = [
+            RetrievalResult(
+                chunk=chunks_by_embedding_id[embedding_id][0],
+                source=chunks_by_embedding_id[embedding_id][1],
+                source_uri=chunks_by_embedding_id[embedding_id][2],
+                score=score,
+            )
+            for embedding_id, score in hits
+            if embedding_id in chunks_by_embedding_id
+        ]
+
+        return results

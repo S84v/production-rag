@@ -122,9 +122,9 @@ from fastapi import FastAPI, Query
 
 app = FastAPI()
 
+
 @app.get("/items/")
-async def read_items(q: Annotated[str | None, Query(max_length=50)] = None):
-    ...
+async def read_items(q: Annotated[str | None, Query(max_length=50)] = None): ...
 ```
 
 **Alternative (older style):**
@@ -134,9 +134,9 @@ from fastapi import FastAPI, Query
 
 app = FastAPI()
 
+
 @app.get("/items/")
-async def read_items(q: str | None = Query(default=None, max_length=50)):
-    ...
+async def read_items(q: str | None = Query(default=None, max_length=50)): ...
 ```
 
 This will:
@@ -188,6 +188,7 @@ from typing import Annotated
 
 app = FastAPI()
 
+
 @app.get("/items/{item_id}")
 async def read_item(item_id: Annotated[int, Path(gt=0, le=1000)]):
     return {"item_id": item_id}
@@ -210,9 +211,11 @@ Generated: To declare a request body using Pydantic in FastAPI, you create a Pyd
 ```python
 from pydantic import BaseModel
 
+
 class Item(BaseModel):
     name: str
     price: float
+
 
 @app.post("/items/")
 def create_item(item: Item):

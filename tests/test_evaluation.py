@@ -18,7 +18,7 @@ def make_example(relevant_chunks: set[str]) -> EvaluationExample:
 def make_retrieved_chunks(*chunk_ids: str) -> list[RetrievedChunk]:
     return [
         RetrievedChunk(
-            source="test",
+            source_uri="test",
             chunk_index=index,
             chunk_id=chunk_id,
             score=1.0 - (index * 0.1),
