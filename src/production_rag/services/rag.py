@@ -22,6 +22,7 @@ class RAGEvent:
     text: str | None = None
     sources: list[RAGSource] | None = None
     retrieval_time_ms: float | None = None
+    total_time_ms: float | None = None
 
 
 class RAGService:
@@ -39,6 +40,8 @@ class RAGService:
         collection_name: str,
         limit: int = 5,
     ) -> AsyncIterator[RAGEvent]:
+        total_start = time.perf_counter()
+
         retrieval_start = time.perf_counter()
 
         results = await self.retrieval_service.retrieve(
@@ -84,3 +87,10 @@ class RAGService:
             instructions=instructions,
         ):
             yield RAGEvent(type="text", text=text)
+
+        total_time_ms = (time.perf_counter() - total_start) * 1000
+
+        yield RAGEvent(
+            type="complete",
+            total_time_ms=total_time_ms,
+        )

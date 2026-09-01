@@ -92,6 +92,14 @@ async def test_rag_service_retrieves_context_and_streams_answer():
     assert events[0].retrieval_time_ms is not None
     assert events[0].retrieval_time_ms >= 0
 
+    assert events[-1] == RAGEvent(
+        type="complete",
+        total_time_ms=events[-1].total_time_ms,
+    )
+
+    assert events[-1].total_time_ms is not None
+    assert events[-1].total_time_ms >= 0
+
     text = "".join(
         event.text
         for event in events
@@ -148,6 +156,10 @@ async def test_rag_service_handles_no_retrieved_context():
     assert events[0].sources == []
     assert events[0].retrieval_time_ms is not None
     assert events[0].retrieval_time_ms >= 0
+
+    assert events[-1].type == "complete"
+    assert events[-1].total_time_ms is not None
+    assert events[-1].total_time_ms >= 0
 
     assert events[1] == RAGEvent(
         type="text",

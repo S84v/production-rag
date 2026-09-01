@@ -15,6 +15,7 @@ class GenerationResult:
     answer: str
     sources: tuple[dict[str, str | int | float], ...]
     retrieval_time_ms: float
+    total_time_ms: float
 
 
 async def evaluate_example(
@@ -26,6 +27,7 @@ async def evaluate_example(
     answer_parts: list[str] = []
     sources: tuple[dict[str, str | int | float], ...] = ()
     retrieval_time_ms = 0.0
+    total_time_ms = 0.0
 
     async for event in rag_service.generate(
         query=example.question,
@@ -46,6 +48,9 @@ async def evaluate_example(
                 for source in event.sources
             )
 
+        elif event.type == "complete":
+            total_time_ms = getattr(event, "total_time_ms", 0.0) or 0.0
+
         elif event.type == "text" and event.text:
             answer_parts.append(event.text)
 
@@ -56,6 +61,7 @@ async def evaluate_example(
         answer="".join(answer_parts),
         sources=sources,
         retrieval_time_ms=retrieval_time_ms,
+        total_time_ms=total_time_ms,
     )
 
 
@@ -114,6 +120,8 @@ def write_markdown(
                 result.answer,
                 "",
                 f"**Retrieval time:** {result.retrieval_time_ms:.2f} ms",
+                "",
+                f"**Total RAG time:** {result.total_time_ms:.2f} ms",
                 "",
                 f"**Retrieved chunks:** {len(result.sources)}",
                 "",

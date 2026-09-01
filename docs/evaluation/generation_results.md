@@ -14,17 +14,11 @@ You declare a path parameter by putting its name inside curly braces in the path
 
 **Generated answer:**
 
-To declare a path parameter in FastAPI, you declare it directly in the path string using curly braces `{}` and then use it as a function parameter. For example:
+Based on the retrieved context, I do not have enough information to answer the specific question of how to declare a path parameter in FastAPI. The context mentions that path parameters can be declared and recognized by FastAPI, but it does not provide the syntax or exact method for declaring them.
 
-```python
-@app.get("/items/{item_id}")
-async def read_item(item_id: int):
-    return {"item_id": item_id}
-```
+**Retrieval time:** 316.86 ms
 
-FastAPI automatically recognizes function parameters that match path parameters (those declared in the URL path with curly braces) and takes their values from the path. You can declare multiple path parameters, and combine them with query parameters or request bodies at the same time - FastAPI knows which is which by name and type.
-
-**Retrieval time:** 308.43 ms
+**Total RAG time:** 2546.30 ms
 
 **Retrieved chunks:** 5
 
@@ -46,13 +40,11 @@ FastAPI uses the Python type annotation of the path parameter to convert the inc
 
 **Generated answer:**
 
-FastAPI converts and validates path parameters by using Python type declarations in the function parameters.
+Based on the retrieved context, FastAPI converts and validates path parameters by using Python type declarations. When a path parameter is declared with a type like `int`, FastAPI will attempt to parse the value from the URL path into that type. If the value cannot be parsed (e.g., a string like "foo" for an `int` parameter), FastAPI raises a `RequestValidationError` and returns a validation error clearly indicating the location of the problem (e.g., `"loc": ["path", "item_id"]`). This validation is automatic based on the type annotation.
 
-According to the context, FastAPI recognizes that function parameters matching path parameters are taken from the path. For validation, it uses the declared Python type (like `int`, `float`, `str`, etc.) to validate the data. The context shows that if a path parameter is declared as `int` but receives a non-integer value like `"foo"`, FastAPI generates a validation error indicating the data couldn't be parsed as an integer.
+**Retrieval time:** 24.78 ms
 
-The context specifically mentions that "with the same Python type declaration, FastAPI gives you data validation" and shows example error messages when path parameters fail validation.
-
-**Retrieval time:** 28.80 ms
+**Total RAG time:** 1908.10 ms
 
 **Retrieved chunks:** 5
 
@@ -74,9 +66,11 @@ Path operations are evaluated in order, so a fixed path such as `/users/me` shou
 
 **Generated answer:**
 
-The order of path operations matters in FastAPI because path operations are evaluated in order. So if you have a fixed path like `/users/me` and a parameterized path like `/users/{user_id}`, you need to declare the fixed path first. Otherwise, the parameterized path would match `/users/me` too, treating `"me"` as a `user_id` value. Thus, declaring `/users/me` before `/users/{user_id}` ensures the correct handling of requests.
+The order of path operations matters in FastAPI because path operations are evaluated in order. If you have a fixed path like `/users/me` and a dynamic path like `/users/{user_id}`, the fixed path must be declared before the dynamic one. Otherwise, the dynamic path would match `/users/me` and treat `"me"` as a `user_id` parameter. Additionally, you cannot redefine a path operation because the first one declared will always be used since the path matches first.
 
-**Retrieval time:** 57.73 ms
+**Retrieval time:** 41.35 ms
+
+**Total RAG time:** 1524.51 ms
 
 **Retrieved chunks:** 5
 
@@ -98,9 +92,11 @@ Use the Starlette path converter syntax `{file_path:path}`, for example `/files/
 
 **Generated answer:**
 
-According to the context, you can make a FastAPI path parameter contain another path by using "one of the internal tools from Starlette." However, the context does not specify exactly how to do this, only that it is possible despite OpenAPI not supporting it natively.
+According to the retrieved context, a FastAPI path parameter can contain another path by using one of the internal tools from Starlette, as OpenAPI doesn't natively support declaring a path parameter to contain a path inside. The context states: "Nevertheless, you can still do it in **FastAPI**, using one of the internal tools from Starlette." However, it does not specify the exact method or provide code examples for how to implement this.
 
-**Retrieval time:** 26.49 ms
+**Retrieval time:** 37.50 ms
+
+**Total RAG time:** 1039.53 ms
 
 **Retrieved chunks:** 5
 
@@ -128,17 +124,23 @@ To make a query parameter optional in FastAPI, you set its default value to `Non
 q: str | None = None
 ```
 
-This makes `q` optional with a default value of `None`. FastAPI will recognize that the parameter is not required because of the default value.
+This makes the parameter `q` optional, with a default value of `None`.
 
-If you're using older versions of FastAPI (before 0.95.0), you would use `Query()` with a default of `None`:
+For more advanced cases with validation, you can use `Query`:
 
 ```Python
-q: str | None = Query(default=None)
+q: str | None = Query(default=None, max_length=50)
 ```
 
-Either approach makes the query parameter optional.
+Or with modern FastAPI (0.95.0+), use `Annotated`:
 
-**Retrieval time:** 56.17 ms
+```Python
+q: Annotated[str | None, Query(max_length=50)] = None
+```
+
+**Retrieval time:** 24.79 ms
+
+**Total RAG time:** 1669.44 ms
 
 **Retrieved chunks:** 5
 
@@ -160,9 +162,11 @@ FastAPI can convert common string representations from the request into Python b
 
 **Generated answer:**
 
-Based on the retrieved context, I do not have enough information to answer the question about how FastAPI handles boolean query parameters. The context provided only discusses string query parameters, optional parameters, and validation using `Query`, but it does not mention boolean query parameters specifically.
+Based on the retrieved context, I do not have enough information to answer how FastAPI handles boolean query parameters. The context discusses query parameters with string validation, optional parameters using `None` defaults, and `Query`, `Path`, and numeric validations, but does not mention boolean query parameters specifically.
 
-**Retrieval time:** 25.87 ms
+**Retrieval time:** 28.29 ms
+
+**Total RAG time:** 932.19 ms
 
 **Retrieved chunks:** 5
 
@@ -184,8 +188,9 @@ Use `Query` with `Annotated`, for example `q: Annotated[str | None, Query(max_le
 
 **Generated answer:**
 
-To add a maximum length validation to a FastAPI query parameter, you can use the `max_length` parameter with `Query` inside `Annotated`. For example:
+To add a maximum length validation to a FastAPI query parameter, you can use the `Query` class with the `max_length` parameter. Here are two ways to do it:
 
+1. **Using `Annotated` (recommended for new code):**
 ```python
 from typing import Annotated
 from fastapi import FastAPI, Query
@@ -197,9 +202,25 @@ async def read_items(q: Annotated[str | None, Query(max_length=50)] = None):
     ...
 ```
 
-This will validate the data, ensure the query parameter `q` has a maximum length of 50 characters, show a clear error if the validation fails, and document the parameter in the OpenAPI schema.
+2. **Using `Query` as the default value (older method):**
+```python
+from fastapi import FastAPI, Query
 
-**Retrieval time:** 28.37 ms
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(q: str | None = Query(default=None, max_length=50)):
+    ...
+```
+
+Both methods will:
+- **Validate** the data to ensure the maximum length is 50 characters
+- Show a **clear error** for the client when the data is not valid
+- **Document** the parameter in the OpenAPI schema path operation (so it will show up in the automatic docs UI)
+
+**Retrieval time:** 25.41 ms
+
+**Total RAG time:** 2109.93 ms
 
 **Retrieved chunks:** 5
 
@@ -221,9 +242,20 @@ FastAPI recommends using `Annotated` to attach `Query`, `Path`, and similar meta
 
 **Generated answer:**
 
-The recommended way to add validation metadata to FastAPI parameters is to use `Query`, `Path`, and other similar classes. These allow you to declare metadata and validations like `alias`, `title`, `description`, `deprecated`, and string-specific validations like `min_length`, `max_length`, and `pattern`. For numeric validations, you can use `gt`, `ge`, `lt`, and `le`. Additionally, you can use `AfterValidator` for custom validations.
+Based on the retrieved context, the recommended way to add validation metadata to FastAPI parameters is by using `Query`, `Path`, and other similar classes. You can declare metadata and validations by using these classes with parameters like:
 
-**Retrieval time:** 27.90 ms
+- `alias`
+- `title`
+- `description`
+- `deprecated`
+- `min_length`
+- `max_length`
+- `pattern`
+- Numeric validations: `gt` (greater than), `ge` (greater than or equal), `lt` (less than), `le` (less than or equal)
+
+**Retrieval time:** 30.25 ms
+
+**Total RAG time:** 1319.61 ms
 
 **Retrieved chunks:** 5
 
@@ -245,26 +277,18 @@ Use `Path` with constraints such as `ge`, `gt`, `le`, or `lt`. For example, `Pat
 
 **Generated answer:**
 
-To declare numeric validation for a FastAPI path parameter, you can use the `Path` function from FastAPI along with `Annotated`. You can specify numeric validation parameters such as `gt`, `ge`, `lt`, and `le`. For example:
+To declare numeric validation for a FastAPI path parameter, you use the `Path` class from `fastapi` along with numeric validation parameters such as:
 
-```python
-from fastapi import FastAPI, Path
-from typing_extensions import Annotated
-
-app = FastAPI()
-
-@app.get("/items/{item_id}")
-async def read_items(item_id: Annotated[int, Path(ge=1, le=100)]):
-    return {"item_id": item_id}
-```
-
-This declares that the `item_id` path parameter must be an integer greater than or equal to 1 and less than or equal to 100. The available numeric validation parameters are:
 - `gt`: greater than
 - `ge`: greater than or equal
 - `lt`: less than
 - `le`: less than or equal
 
-**Retrieval time:** 29.93 ms
+For example, you would first import `Path` and `Annotated`, then use them in your path parameter declaration with the desired numeric constraints.
+
+**Retrieval time:** 26.78 ms
+
+**Total RAG time:** 1458.88 ms
 
 **Retrieved chunks:** 5
 
@@ -286,28 +310,18 @@ Define a Pydantic model that inherits from `BaseModel`, then declare a path oper
 
 **Generated answer:**
 
-To declare a request body in FastAPI, you use Pydantic models. Here's how:
+Based on the retrieved context, to define a request body using Pydantic in FastAPI, you:
 
-1. **Define a Pydantic model** - Create a class that inherits from `BaseModel` (from Pydantic) with attributes that define the structure of the body data.
+1. Create a Pydantic model (a class that inherits from `BaseModel`) and import it.
+2. Use that Pydantic model as a type annotation for a function parameter in your path operation function.
 
-2. **Use the model as a type annotation** - In your path operation function, declare a parameter with the Pydantic model as its type. FastAPI will automatically recognize parameters that are Pydantic models as request bodies.
+The context states: "To declare a **request** body, you use Pydantic models with all their power and benefits." It also explains that FastAPI recognizes parameters declared as Pydantic models as coming from the request body. You can also combine this with path and query parameters by declaring them together in the function signature.
 
-For example:
-```python
-from pydantic import BaseModel
+The context does not provide a code example of actually defining the Pydantic model, but it clearly indicates that you declare a Pydantic model and use it as the parameter type to define a request body.
 
-class Item(BaseModel):
-    name: str
-    price: float
+**Retrieval time:** 28.55 ms
 
-@app.post("/items/")
-async def create_item(item: Item):
-    return item
-```
-
-FastAPI will recognize that `item` is a Pydantic model type, so it will take the data from the request body rather than from path or query parameters.
-
-**Retrieval time:** 36.73 ms
+**Total RAG time:** 2342.67 ms
 
 **Retrieved chunks:** 5
 
@@ -329,16 +343,15 @@ FastAPI reads the body as JSON, converts values to the declared Python types whe
 
 **Generated answer:**
 
-When a request body is defined with a Pydantic model, FastAPI will:
+Based on the retrieved context, when a request body is defined with a Pydantic model, FastAPI will:
 
-1. Recognize that the function parameter declared as a Pydantic model should be taken from the request body.
-2. Provide editor support (completion everywhere).
-3. Perform data conversion (parsing/serialization).
-4. Perform data validation.
-5. Provide schema documentation.
-6. Provide automatic docs.
+- Recognize that the function parameter declared as a Pydantic model should be taken from the request body.
+- Provide editor support, data conversion (parsing/serialization), data validation, schema documentation, and automatic docs for the body.
+- Use Pydantic (which is written in Rust) to handle data validation and serialization, making it faster.
 
-**Retrieval time:** 33.42 ms
+**Retrieval time:** 26.45 ms
+
+**Total RAG time:** 1571.76 ms
 
 **Retrieved chunks:** 5
 
@@ -360,9 +373,11 @@ Yes. A Pydantic model can contain another Pydantic model as a field, allowing ar
 
 **Generated answer:**
 
-Yes, FastAPI can handle nested Pydantic models.
+Yes, FastAPI can handle nested Pydantic models. According to the retrieved context, FastAPI allows you to define, validate, document, and use arbitrarily deeply nested models thanks to Pydantic. You can have a Pydantic model with attributes that are themselves other Pydantic models, and FastAPI will handle validation, data conversion, and automatic documentation for these nested structures.
 
-**Retrieval time:** 26.24 ms
+**Retrieval time:** 22.61 ms
+
+**Total RAG time:** 1723.12 ms
 
 **Retrieved chunks:** 5
 
@@ -384,9 +399,17 @@ Use a parameterized Python type such as `list[str]`. This tells Pydantic and Fas
 
 **Generated answer:**
 
-To define a list of a specific type in a Pydantic model, you can use the type hint `list[TypeName]` for the attribute. For example, `images: list[Image]` declares a list where each element must be of type `Image` (which itself must be a Pydantic model). This allows Pydantic to convert, validate, and document the list of objects accordingly.
+In a Pydantic model, you can define a list of a specific type by using the type hint syntax with square brackets, like `list[TypeName]` or `List[TypeName]`, as an attribute in the model. For example:
 
-**Retrieval time:** 37.95 ms
+```Python
+images: list[Image]
+```
+
+This declares that the `images` attribute will contain a list of `Image` models. Pydantic will then convert, validate, and document the data accordingly.
+
+**Retrieval time:** 22.63 ms
+
+**Total RAG time:** 1636.87 ms
 
 **Retrieved chunks:** 5
 
@@ -408,15 +431,17 @@ You can annotate the path operation's return type with a Pydantic model or expli
 
 **Generated answer:**
 
-To return a response model from a FastAPI endpoint, you can either:
+To return a response model from a FastAPI endpoint, you can use either of two methods:
 
-1. **Use a return type annotation** on the path operation function, declaring the Pydantic model (or other types like lists, dictionaries, or scalar values) as the return type. FastAPI will validate, document, and serialize the returned data according to that type.
+1. **Annotate the return type** on the path operation function. FastAPI will use this type to validate, serialize, and filter the output data.
 
-2. **Use the `response_model` parameter** in the path operation decorator (e.g., `@app.get()`, `@app.post()`) instead of a return type annotation. This is useful when you want to return data that doesn't exactly match the declared type (e.g., a dictionary or database object) but still want FastAPI to validate and filter it according to the response model.
+2. **Use the `response_model` parameter** in the path operation decorator (e.g., `@app.get()`, `@app.post()`, etc.). This is useful when you want to return data that doesn't exactly match the declared type (e.g., a dictionary or database object) but still want to declare it as a Pydantic model for documentation and validation.
 
-If both a return type and `response_model` are declared, `response_model` takes priority. You can also set `response_model=None` to disable response model generation entirely.
+If both are declared, `response_model` takes priority. You can also use `response_model=None` to disable response model creation when needed.
 
-**Retrieval time:** 33.24 ms
+**Retrieval time:** 28.26 ms
+
+**Total RAG time:** 1937.26 ms
 
 **Retrieved chunks:** 5
 
@@ -438,9 +463,11 @@ The `response_model` takes priority over the function return type for FastAPI's 
 
 **Generated answer:**
 
-If both a return type and `response_model` are specified, the `response_model` will take priority and be used by FastAPI. This allows you to add correct type annotations to your functions for editor and tooling purposes, while FastAPI uses the `response_model` for data validation, documentation, filtering, and serialization.
+If you declare both a return type and a `response_model`, the `response_model` will take priority and be used by FastAPI. This allows you to add correct type annotations to your functions for editor and tooling purposes, while FastAPI uses the `response_model` for data validation, documentation, and filtering.
 
-**Retrieval time:** 42.50 ms
+**Retrieval time:** 34.93 ms
+
+**Total RAG time:** 1221.12 ms
 
 **Retrieved chunks:** 5
 
@@ -462,9 +489,11 @@ FastAPI uses the response model to filter returned data to the fields declared b
 
 **Generated answer:**
 
-Response models are useful for security because they **limit and filter the output data** to only what is defined in the return type. This is particularly important for security, as it ensures that sensitive data (such as passwords) is not accidentally exposed in API responses. FastAPI will automatically filter out any data that is not declared in the output model.
+Based on the retrieved context, response models are useful for security because they **limit and filter the output data to what is defined in the return type**. This is particularly important for security. The context explains that even if a function returns an object containing sensitive fields (like a plaintext password), FastAPI will filter out data that is not declared in the output model—for example, creating an output model without the password field, so the password is never exposed to the client.
 
-**Retrieval time:** 21.96 ms
+**Retrieval time:** 27.16 ms
+
+**Total RAG time:** 1278.18 ms
 
 **Retrieved chunks:** 5
 
@@ -486,9 +515,11 @@ Pass the desired status code to the path operation decorator using the `status_c
 
 **Generated answer:**
 
-You specify an HTTP status code for a FastAPI endpoint by using the `status_code` parameter in the path operation decorator (e.g., `@app.get()`, `@app.post()`, `@app.put()`, `@app.delete()`, etc.). This parameter receives a number (the HTTP status code). Alternatively, it can receive an `IntEnum` such as Python's `http.HTTPStatus`. This sets the status code that will be returned in the response and documents it in the OpenAPI schema.
+You specify an HTTP status code for a FastAPI endpoint by using the `status_code` parameter in the path operation decorator (e.g., `@app.get()`, `@app.post()`, etc.). This parameter accepts a number representing the HTTP status code, or alternatively, an `IntEnum` such as Python's `http.HTTPStatus`. For example, you can set `status_code=201` in a `@app.post()` decorator to return a "Created" response.
 
-**Retrieval time:** 36.88 ms
+**Retrieval time:** 31.32 ms
+
+**Total RAG time:** 1502.50 ms
 
 **Retrieved chunks:** 5
 
@@ -510,17 +541,26 @@ Raise `HTTPException` rather than returning it. For example, `raise HTTPExceptio
 
 **Generated answer:**
 
-To raise an HTTP error in FastAPI, you use the `HTTPException` class. You **raise** it (not return it) inside your code. For example:
+To raise an HTTP error in FastAPI, you use the `HTTPException` class. Here's how:
 
 ```python
 from fastapi import HTTPException
 
+# Inside your path operation function
 raise HTTPException(status_code=404, detail="Item not found")
 ```
 
-The `status_code` is the HTTP status code (e.g., 404) and `detail` can be any JSON-serializable value (like a string, dict, or list) that will be sent to the client in the response body. When raised, it stops the current request handling and sends the error to the client immediately.
+Key points:
+- `HTTPException` is a normal Python exception, so you **`raise`** it, not `return` it.
+- You pass a `status_code` (like 404, 418, etc.) and a `detail` parameter.
+- The `detail` parameter can be any value convertible to JSON, including a `str`, `dict`, or `list`.
+- When raised, it terminates the request immediately and sends the HTTP error to the client.
 
-**Retrieval time:** 24.00 ms
+This is the standard way to raise HTTP errors in FastAPI code.
+
+**Retrieval time:** 26.29 ms
+
+**Total RAG time:** 1750.14 ms
 
 **Retrieved chunks:** 5
 
@@ -542,9 +582,11 @@ FastAPI's dependency injection system lets path operation functions declare depe
 
 **Generated answer:**
 
-Dependency injection in FastAPI is a system where your code (like path operation functions) declares things it requires to work—called "dependencies"—and FastAPI takes care of providing those dependencies ("injecting" them). This is useful for sharing logic, database connections, enforcing security or authentication, and other tasks while minimizing code repetition. FastAPI's dependency injection system is described as powerful but intuitive, and it can also be used to build integrations and "plug-ins" without needing actual plug-ins.
+Based on the retrieved context, dependency injection in FastAPI is a programming concept where your code (specifically, your *path operation functions*) can declare things that it requires to work and use—these are called "dependencies." FastAPI then takes care of what is needed to provide your code with those dependencies, effectively "injecting" them. This system is useful for sharing logic, database connections, enforcing security, and authentication, all while minimizing code repetition. FastAPI's dependency injection system is described as very powerful yet intuitive, allowing for integrations to be built easily.
 
-**Retrieval time:** 22.51 ms
+**Retrieval time:** 28.80 ms
+
+**Total RAG time:** 1813.26 ms
 
 **Retrieved chunks:** 5
 
@@ -566,9 +608,11 @@ Yes. Dependencies can declare their own dependencies, allowing dependency graphs
 
 **Generated answer:**
 
-Yes, FastAPI dependencies can have other dependencies. According to the context, "You can create dependencies that have **sub-dependencies**," and they can be as deep as needed, with FastAPI handling the resolution automatically.
+Yes, FastAPI dependencies can have other dependencies. This is called "sub-dependencies," and they can be as deep as needed, with FastAPI solving them automatically.
 
-**Retrieval time:** 46.24 ms
+**Retrieval time:** 25.40 ms
+
+**Total RAG time:** 1086.30 ms
 
 **Retrieved chunks:** 5
 
@@ -590,9 +634,11 @@ When the same dependency is required multiple times for a path operation, FastAP
 
 **Generated answer:**
 
-Based on the retrieved context, FastAPI avoids calling the same dependency multiple times by using a "cache" system. When a dependency is declared multiple times for the same path operation (for example, multiple dependencies have a common sub-dependency), FastAPI calls that sub-dependency only once per request, saves the returned value in a cache, and passes it to all "dependants" that need it in that specific request. However, if you need the dependency to be called at every step instead of using the cached value, you can set the parameter `use_cache=False` when using `Depends`.
+Based on the retrieved context, FastAPI avoids calling the same dependency multiple times by caching the returned value. When a dependency is declared multiple times for the same path operation (for example, as a common sub-dependency), FastAPI calls it only once per request. It then saves the returned value in a "cache" and passes it to all the "dependants" that need it in that specific request, rather than calling the dependency multiple times. If needed, you can disable this caching behavior by setting `use_cache=False` when using `Depends`.
 
-**Retrieval time:** 24.89 ms
+**Retrieval time:** 30.81 ms
+
+**Total RAG time:** 1234.01 ms
 
 **Retrieved chunks:** 5
 
@@ -614,9 +660,11 @@ OAuth2PasswordBearer reads the `Authorization` header and expects a Bearer token
 
 **Generated answer:**
 
-According to the provided context, `OAuth2PasswordBearer` is used in FastAPI to implement OAuth2 with the Password flow using a Bearer token. It does not obtain a token itself; rather, it is configured with a `tokenUrl` parameter, which declares the URL that clients will use to send their `username` and `password` to get a token. The actual token generation is not handled by `OAuth2PasswordBearer`—it only serves as a dependency that extracts the token from the `Authorization` header (in the form `Bearer <token>`) for protected endpoints. The context states that the token endpoint "we haven't implemented any of this yet," meaning the actual token creation must be implemented separately by the developer.
+Based on the retrieved context, `OAuth2PasswordBearer` in FastAPI does not directly obtain a token itself. Instead, it declares the URL (`tokenUrl`) where the client will send the username and password to get a token. The actual token generation is implemented separately by the developer (e.g., in a path operation). The `OAuth2PasswordBearer` instance is used as a dependency to extract the token from the `Authorization` header (as a `Bearer` token) for authentication purposes.
 
-**Retrieval time:** 41.04 ms
+**Retrieval time:** 100.88 ms
+
+**Total RAG time:** 1349.38 ms
 
 **Retrieved chunks:** 5
 
@@ -638,9 +686,11 @@ The JWT `sub` claim identifies the subject of the token. In the FastAPI example 
 
 **Generated answer:**
 
-Based on the retrieved context, the purpose of the JWT subject claim (`sub`) in FastAPI's OAuth2 example is to hold the user's identification. The context states that the `sub` key is where you would put the user's identification, and it should contain a unique identifier across the entire application.
+Based on the retrieved context, the purpose of the JWT subject claim (`sub`) is to carry the user's identification. According to the context, "that's where you would put the user's identification." The claim is used to store a unique identifier for the subject of the token, which should be a string and unique across the entire application. Additionally, it can be prefixed (e.g., `username:`) to avoid ID collisions with other entities in more advanced scenarios. It is optional to use, but in the FastAPI OAuth2 example, it is used for this identification purpose.
 
-**Retrieval time:** 42.76 ms
+**Retrieval time:** 52.45 ms
+
+**Total RAG time:** 1362.59 ms
 
 **Retrieved chunks:** 5
 
@@ -662,11 +712,11 @@ Middleware is a function that runs for every request before the request reaches 
 
 **Generated answer:**
 
-Based on the retrieved context:
+FastAPI middleware is a function that works with every request before it is processed by any specific path operation, and also with every response before returning it. It takes each request, can do something to it or run code, passes it to be processed by the rest of the application (by a path operation), then takes the response generated, can do something to it or run code, and then returns it.
 
-FastAPI middleware is a function that works with every request before it is processed by any specific path operation, and also with every response before returning it. It takes each request that comes to your application, can do something to that request or run any needed code, passes the request to be processed by the rest of the application (by some path operation), takes the response generated by the application, can do something to that response or run any needed code, and then returns the response.
+**Retrieval time:** 26.50 ms
 
-**Retrieval time:** 32.80 ms
+**Total RAG time:** 1341.50 ms
 
 **Retrieved chunks:** 5
 
