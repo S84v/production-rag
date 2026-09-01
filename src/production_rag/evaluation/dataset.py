@@ -8,29 +8,26 @@ class EvaluationExample:
     id: str
     question: str
     reference_answer: str
-    relevant_sources: frozenset[str]
+    relevant_chunks: frozenset[str]
 
 
 def load_dataset(path: Path) -> list[EvaluationExample]:
     with path.open(encoding="utf-8") as file:
-        raw_examples = json.load(file)
+        data = json.load(file)
 
-    if not isinstance(raw_examples, list):
+    if not isinstance(data, list):
         raise ValueError("Evaluation dataset must contain a JSON array")
 
-    examples: list[EvaluationExample] = []
-
-    for raw in raw_examples:
-        if not isinstance(raw, dict):
+    for _ in data:
+        if not isinstance(_, dict):
             raise ValueError("Each evaluation example must be a JSON object")
 
-        examples.append(
-            EvaluationExample(
-                id=raw["id"],
-                question=raw["question"],
-                reference_answer=raw["reference_answer"],
-                relevant_sources=frozenset(raw["relevant_sources"]),
-            )
+    return [
+        EvaluationExample(
+            id=raw["id"],
+            question=raw["question"],
+            reference_answer=raw["reference_answer"],
+            relevant_chunks=frozenset(raw["relevant_chunks"]),
         )
-
-    return examples
+        for raw in data
+    ]

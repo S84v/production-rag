@@ -10,11 +10,12 @@ from production_rag.services.retrieval import RetrievalService
 @dataclass(frozen=True)
 class RetrievalEvaluationResult:
     example_id: str
-    retrieved_sources: tuple[str, ...]
-    relevant_sources: frozenset[str]
+    retrieved_chunks: tuple[str, ...]
+    relevant_chunks: frozenset[str]
     precision: float
     recall: float
     reciprocal_rank: float
+    hit: float
 
 
 @dataclass(frozen=True)
@@ -23,16 +24,17 @@ class RetrievalEvaluationSummary:
     precision: float
     recall: float
     mrr: float
+    hit_rate: float
 
 
 def evaluate_example(
     example: EvaluationExample,
-    retrieved_sources: list[str],
+    retrieved_chunks: list[str],
 ) -> RetrievalEvaluationResult:
-    relevant = example.relevant_sources
-    retrieved = retrieved_sources
+    relevant = example.relevant_chunks
+    retrieved = retrieved_chunks
 
-    relevant_retrieved = sum(source in relevant for source in retrieved)
+    relevant_retrieved = sum(chunk_id in relevant for chunk_id in retrieved)
 
     precision = relevant_retrieved / len(retrieved) if retrieved else 0.0
 
@@ -40,18 +42,21 @@ def evaluate_example(
 
     reciprocal_rank = 0.0
 
-    for rank, source in enumerate(retrieved, start=1):
-        if source in relevant:
+    for rank, chunk_id in enumerate(retrieved, start=1):
+        if chunk_id in relevant:
             reciprocal_rank = 1.0 / rank
             break
 
+    hit = 1.0 if relevant_retrieved > 0 else 0.0
+
     return RetrievalEvaluationResult(
         example_id=example.id,
-        retrieved_sources=tuple(retrieved),
-        relevant_sources=relevant,
+        retrieved_chunks=tuple(retrieved),
+        relevant_chunks=relevant,
         precision=precision,
         recall=recall,
         reciprocal_rank=reciprocal_rank,
+        hit=hit,
     )
 
 
@@ -66,16 +71,8 @@ def summarize(results: list[RetrievalEvaluationResult]) -> RetrievalEvaluationSu
         precision=sum(r.precision for r in results) / count,
         recall=sum(r.recall for r in results) / count,
         mrr=sum(r.reciprocal_rank for r in results) / count,
+        hit_rate=sum(r.hit for r in results) / count,
     )
-
-
-def source_path(source_uri: str) -> str:
-    prefix = "filesystem://"
-
-    if not source_uri.startswith(prefix):
-        raise ValueError(f"Unsupported source URI: {source_uri}")
-
-    return source_uri.removeprefix(prefix)
 
 
 async def evaluate(
@@ -94,12 +91,10 @@ async def evaluate(
             limit=limit,
         )
 
-        retrieved_sources = list(
-            dict.fromkeys(source_path(result.source_uri) for result in retrieved)
-        )
+        retrieved_chunks = [str(result.chunk.id) for result in retrieved]
 
         results.append(
-            evaluate_example(example=example, retrieved_sources=retrieved_sources)
+            evaluate_example(example=example, retrieved_chunks=retrieved_chunks)
         )
 
     return summarize(results)
@@ -110,7 +105,9 @@ def print_summary(summary: RetrievalEvaluationSummary, limit: int) -> None:
     print("=" * 20)
     print(f"Examples: {len(summary.results)}")
     print(f"Top-K: {limit}")
-    print(f"Precision@K Documents: {summary.precision:.4f}")
+    print(f"Precision@{limit} Chunks: {summary.precision:.4f}")
+    print(f"Recall@{limit} Chunks: {summary.recall:.4f}")
+    print(f"Hit@{limit} Chunks: {summary.hit_rate:.4f}")
     print(f"MRR: {summary.mrr:.4f}")
 
     failures = [result for result in summary.results if result.recall < 1.0]
@@ -122,8 +119,8 @@ def print_summary(summary: RetrievalEvaluationSummary, limit: int) -> None:
 
         for result in failures:
             print(f"\n{result.example_id}")
-            print(f"Retrieved: {list(result.retrieved_sources)}")
-            print(f"Relevant: {list(result.relevant_sources)}")
+            print(f"Retrieved chunks: {list(result.retrieved_chunks)}")
+            print(f"Relevant chunks: {list(result.relevant_chunks)}")
 
 
 def parse_args() -> argparse.Namespace:
