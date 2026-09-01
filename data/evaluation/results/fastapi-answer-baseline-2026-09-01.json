@@ -1,0 +1,78 @@
+{
+    "evaluation": "answer",
+    "dataset": "data/evaluation/fastapi.json",
+    "collection": "fastapi",
+    "retrieval_limit": 5,
+    "examples": 24,
+    "judge_model": "deepseek-chat",
+    "metric_threshold": 0.7,
+    "run_date": "2026-09-01",
+    "commit": "1ab7585cd7a936068b8a2f09ad7a38811af66efb",
+    "command": "uv run python -m production_rag.evaluation.answer --dataset data/evaluation/fastapi.json --collection fastapi --limit 5",
+    "aggregate": {
+        "contextual_recall": {
+            "average": 0.88,
+            "pass_rate": 0.875,
+            "passed": 21,
+            "failed": 3
+        },
+        "contextual_precision": {
+            "average": 0.58,
+            "pass_rate": 0.4583,
+            "passed": 11,
+            "failed": 13
+        },
+        "answer_relevancy": {
+            "average": 0.94,
+            "pass_rate": 0.9167,
+            "passed": 22,
+            "failed": 2
+        },
+        "faithfulness": {
+            "average": 1.0,
+            "pass_rate": 1.0,
+            "passed": 24,
+            "failed": 0
+        }
+    },
+    "overall": {
+        "deepeval_test_pass_rate": 0.4583,
+        "passed": 11,
+        "failed": 13,
+        "total": 24
+    },
+    "failed_cases": {
+        "contextual_recall": [
+            "fastapi-001",
+            "fastapi-006",
+            "fastapi-008"
+        ],
+        "contextual_precision": [
+            "fastapi-001",
+            "fastapi-002",
+            "fastapi-003",
+            "fastapi-004",
+            "fastapi-006",
+            "fastapi-008",
+            "fastapi-009",
+            "fastapi-011",
+            "fastapi-013",
+            "fastapi-015",
+            "fastapi-016",
+            "fastapi-018",
+            "fastapi-023"
+        ],
+        "answer_relevancy": [
+            "fastapi-001",
+            "fastapi-006"
+        ],
+        "faithfulness": []
+    },
+    "observations": [
+        "Faithfulness is perfect: 1.00 average and 100% pass rate.",
+        "Answer relevancy is strong: 0.94 average and 91.67% pass rate.",
+        "Contextual recall is good overall at 0.88, with three failures caused by missing required information in retrieved context.",
+        "Contextual precision is the main weakness at 0.58 average and 45.83% pass rate; many relevant chunks are ranked below irrelevant chunks.",
+        "The evaluation output reported that no prompts were logged. Prompt logging is a separate observability task."
+    ]
+}
