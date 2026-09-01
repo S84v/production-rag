@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from production_rag.services.llm import LLMService
 from production_rag.services.retrieval import RetrievalService
+from production_rag.telemetry import get_tracer
 
 
 @dataclass
@@ -25,6 +26,9 @@ class RAGEvent:
     total_time_ms: float | None = None
 
 
+tracer = get_tracer()
+
+
 class RAGService:
     def __init__(
         self,
@@ -40,57 +44,69 @@ class RAGService:
         collection_name: str,
         limit: int = 5,
     ) -> AsyncIterator[RAGEvent]:
-        total_start = time.perf_counter()
 
-        retrieval_start = time.perf_counter()
+        with tracer.start_as_current_span("rag.generate") as span:
+            span.set_attribute("rag.collection", collection_name)
+            span.set_attribute("rag.limit", limit)
 
-        results = await self.retrieval_service.retrieve(
-            query=query, collection_name=collection_name, limit=limit
-        )
+            total_start = time.perf_counter()
 
-        retrieval_time_ms = (time.perf_counter() - retrieval_start) * 1000
+            retrieval_start = time.perf_counter()
 
-        sources = [
-            RAGSource(
-                source=result.source,
-                source_uri=result.source_uri,
-                chunk_id=str(result.chunk.id),
-                chunk_index=result.chunk.chunk_index,
-                score=result.score,
-                content=result.chunk.content,
+            results = await self.retrieval_service.retrieve(
+                query=query,
+                collection_name=collection_name,
+                limit=limit,
             )
-            for result in results
-        ]
 
-        yield RAGEvent(
-            type="sources",
-            sources=sources,
-            retrieval_time_ms=retrieval_time_ms,
-        )
+            retrieval_time_ms = (time.perf_counter() - retrieval_start) * 1000
 
-        context = "\n\n".join(
-            f"[Source {index}]\n{result.chunk.content}"
-            for index, result in enumerate(results, start=1)
-        )
+            span.set_attribute("rag.retrieved_chunks", len(results))
+            span.set_attribute("rag.retrieval_time_ms", retrieval_time_ms)
 
-        prompt = f"Question:\n{query}\n\nRetrieved context:\n{context}"
+            sources = [
+                RAGSource(
+                    source=result.source,
+                    source_uri=result.source_uri,
+                    chunk_id=str(result.chunk.id),
+                    chunk_index=result.chunk.chunk_index,
+                    score=result.score,
+                    content=result.chunk.content,
+                )
+                for result in results
+            ]
 
-        instructions = (
-            "Answer the question using only the retrieved context. "
-            "If the context does not contain enough information to answer, "
-            "say that you do not have enough information. "
-            "Do not invent facts."
-        )
+            yield RAGEvent(
+                type="sources",
+                sources=sources,
+                retrieval_time_ms=retrieval_time_ms,
+            )
 
-        async for text in self.llm_service.generate(
-            prompt=prompt,
-            instructions=instructions,
-        ):
-            yield RAGEvent(type="text", text=text)
+            context = "\n\n".join(
+                f"[Source {index}]\n{result.chunk.content}"
+                for index, result in enumerate(results, start=1)
+            )
 
-        total_time_ms = (time.perf_counter() - total_start) * 1000
+            prompt = f"Question:\n{query}\n\nRetrieved context:\n{context}"
 
-        yield RAGEvent(
-            type="complete",
-            total_time_ms=total_time_ms,
-        )
+            instructions = (
+                "Answer the question using only the retrieved context. "
+                "If the context does not contain enough information to answer, "
+                "say that you do not have enough information. "
+                "Do not invent facts."
+            )
+
+            async for text in self.llm_service.generate(
+                prompt=prompt,
+                instructions=instructions,
+            ):
+                yield RAGEvent(type="text", text=text)
+
+            total_time_ms = (time.perf_counter() - total_start) * 1000
+
+            span.set_attribute("rag.total_time_ms", total_time_ms)
+
+            yield RAGEvent(
+                type="complete",
+                total_time_ms=total_time_ms,
+            )

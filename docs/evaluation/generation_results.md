@@ -197,9 +197,9 @@ from fastapi import FastAPI, Query
 
 app = FastAPI()
 
+
 @app.get("/items/")
-async def read_items(q: Annotated[str | None, Query(max_length=50)] = None):
-    ...
+async def read_items(q: Annotated[str | None, Query(max_length=50)] = None): ...
 ```
 
 2. **Using `Query` as the default value (older method):**
@@ -208,9 +208,9 @@ from fastapi import FastAPI, Query
 
 app = FastAPI()
 
+
 @app.get("/items/")
-async def read_items(q: str | None = Query(default=None, max_length=50)):
-    ...
+async def read_items(q: str | None = Query(default=None, max_length=50)): ...
 ```
 
 Both methods will:
