@@ -27,6 +27,7 @@ class FakeRAGService:
                 RAGSource(
                     source="fastapi",
                     source_uri="docs/index.md",
+                    chunk_id="00000000-0000-0000-0000-000000000001",
                     chunk_index=0,
                     score=0.95,
                     content="FastAPI is a Python web framework.",

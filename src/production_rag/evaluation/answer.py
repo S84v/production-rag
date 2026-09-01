@@ -141,10 +141,16 @@ def print_results(results: list[AnswerEvaluationResult]) -> None:
         print(f"Question: {result.question}")
         print(f"Reference: {result.reference_answer}")
         print(f"Generated: {result.generated_answer}")
-        print(
-            "Retrieved:",
-            [source.source_uri for source in result.retrieved_sources],
-        )
+        print("Retrieved:")
+
+        for rank, source in enumerate(result.retrieved_sources, start=1):
+            print(
+                f"  {rank}. "
+                f"{source.source_uri} | "
+                f"chunk={source.chunk_index} | "
+                f"uuid={source.chunk_id}"
+            )
+
         print()
 
 

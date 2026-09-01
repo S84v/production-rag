@@ -9,6 +9,7 @@ from production_rag.services.retrieval import RetrievalService
 class RAGSource:
     source: str
     source_uri: str
+    chunk_id: str
     chunk_index: int
     score: float
     content: str
@@ -44,6 +45,7 @@ class RAGService:
             RAGSource(
                 source=result.source,
                 source_uri=result.source_uri,
+                chunk_id=str(result.chunk.id),
                 chunk_index=result.chunk.chunk_index,
                 score=result.score,
                 content=result.chunk.content,

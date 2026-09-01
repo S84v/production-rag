@@ -33,6 +33,7 @@ async def test_rag_service_retrieves_context_and_streams_answer():
         [
             SimpleNamespace(
                 chunk=SimpleNamespace(
+                    id="00000000-0000-0000-0000-000000000001",
                     content="FastAPI is a Python web framework.",
                     chunk_index=0,
                 ),
@@ -42,6 +43,7 @@ async def test_rag_service_retrieves_context_and_streams_answer():
             ),
             SimpleNamespace(
                 chunk=SimpleNamespace(
+                    id="00000000-0000-0000-0000-000000000002",
                     content="FastAPI uses standard Python type hints.",
                     chunk_index=1,
                 ),
@@ -74,6 +76,7 @@ async def test_rag_service_retrieves_context_and_streams_answer():
             RAGSource(
                 source="fastapi",
                 source_uri="docs/index.md",
+                chunk_id="00000000-0000-0000-0000-000000000001",
                 chunk_index=0,
                 score=0.95,
                 content="FastAPI is a Python web framework.",
@@ -81,6 +84,7 @@ async def test_rag_service_retrieves_context_and_streams_answer():
             RAGSource(
                 source="fastapi",
                 source_uri="docs/features.md",
+                chunk_id="00000000-0000-0000-0000-000000000002",
                 chunk_index=1,
                 score=0.90,
                 content="FastAPI uses standard Python type hints.",

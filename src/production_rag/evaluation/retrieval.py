@@ -8,9 +8,17 @@ from production_rag.services.retrieval import RetrievalService
 
 
 @dataclass(frozen=True)
+class RetrievedChunk:
+    source_uri: str
+    chunk_index: int
+    chunk_id: str
+    score: float
+
+
+@dataclass(frozen=True)
 class RetrievalEvaluationResult:
     example_id: str
-    retrieved_chunks: tuple[str, ...]
+    retrieved_chunks: tuple[RetrievedChunk, ...]
     relevant_chunks: frozenset[str]
     precision: float
     recall: float
@@ -29,20 +37,20 @@ class RetrievalEvaluationSummary:
 
 def evaluate_example(
     example: EvaluationExample,
-    retrieved_chunks: list[str],
+    retrieved_chunks: list[RetrievedChunk],
 ) -> RetrievalEvaluationResult:
     relevant = example.relevant_chunks
-    retrieved = retrieved_chunks
+    retrieved_ids = [chunk.chunk_id for chunk in retrieved_chunks]
 
-    relevant_retrieved = sum(chunk_id in relevant for chunk_id in retrieved)
+    relevant_retrieved = sum(chunk_id in relevant for chunk_id in retrieved_ids)
 
-    precision = relevant_retrieved / len(retrieved) if retrieved else 0.0
+    precision = relevant_retrieved / len(retrieved_ids) if retrieved_ids else 0.0
 
     recall = relevant_retrieved / len(relevant) if relevant else 0.0
 
     reciprocal_rank = 0.0
 
-    for rank, chunk_id in enumerate(retrieved, start=1):
+    for rank, chunk_id in enumerate(retrieved_ids, start=1):
         if chunk_id in relevant:
             reciprocal_rank = 1.0 / rank
             break
@@ -51,7 +59,7 @@ def evaluate_example(
 
     return RetrievalEvaluationResult(
         example_id=example.id,
-        retrieved_chunks=tuple(retrieved),
+        retrieved_chunks=tuple(retrieved_chunks),
         relevant_chunks=relevant,
         precision=precision,
         recall=recall,
@@ -60,7 +68,9 @@ def evaluate_example(
     )
 
 
-def summarize(results: list[RetrievalEvaluationResult]) -> RetrievalEvaluationSummary:
+def summarize(
+    results: list[RetrievalEvaluationResult],
+) -> RetrievalEvaluationSummary:
     if not results:
         raise ValueError("Cannot summarize an empty evaluation")
 
@@ -91,16 +101,30 @@ async def evaluate(
             limit=limit,
         )
 
-        retrieved_chunks = [str(result.chunk.id) for result in retrieved]
+        retrieved_chunks = [
+            RetrievedChunk(
+                source_uri=result.source_uri,
+                chunk_index=result.chunk.chunk_index,
+                chunk_id=str(result.chunk.id),
+                score=result.score,
+            )
+            for result in retrieved
+        ]
 
         results.append(
-            evaluate_example(example=example, retrieved_chunks=retrieved_chunks)
+            evaluate_example(
+                example=example,
+                retrieved_chunks=retrieved_chunks,
+            )
         )
 
     return summarize(results)
 
 
-def print_summary(summary: RetrievalEvaluationSummary, limit: int) -> None:
+def print_summary(
+    summary: RetrievalEvaluationSummary,
+    limit: int,
+) -> None:
     print("Retrieval Evaluation")
     print("=" * 20)
     print(f"Examples: {len(summary.results)}")
@@ -119,8 +143,22 @@ def print_summary(summary: RetrievalEvaluationSummary, limit: int) -> None:
 
         for result in failures:
             print(f"\n{result.example_id}")
-            print(f"Retrieved chunks: {list(result.retrieved_chunks)}")
-            print(f"Relevant chunks: {list(result.relevant_chunks)}")
+
+            print("Retrieved chunks:")
+
+            for rank, chunk in enumerate(
+                result.retrieved_chunks,
+                start=1,
+            ):
+                print(
+                    f"  {rank}. "
+                    f"{chunk.source_uri} | "
+                    f"chunk={chunk.chunk_index} | "
+                    f"uuid={chunk.chunk_id} | "
+                    f"score={chunk.score:.4f}"
+                )
+
+            print(f"Relevant chunk UUIDs: {list(result.relevant_chunks)}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -129,7 +167,9 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--dataset", type=Path, default=Path("data/evaluation/fastapi.json")
+        "--dataset",
+        type=Path,
+        default=Path("data/evaluation/fastapi.json"),
     )
 
     parser.add_argument(
@@ -152,7 +192,9 @@ async def main() -> None:
     examples = load_dataset(args.dataset)
 
     summary = await evaluate(
-        examples=examples, collection_name=args.collection, limit=args.k
+        examples=examples,
+        collection_name=args.collection,
+        limit=args.k,
     )
 
     print_summary(summary, args.k)
