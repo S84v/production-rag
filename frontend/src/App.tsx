@@ -61,54 +61,100 @@ function App() {
   return (
     <main className="app">
       <header className="header">
+        <div className="eyebrow">DOCUMENTATION ASSISTANT</div>
         <h1>Production RAG</h1>
-        <p>Ask questions about the FastAPI documentation.</p>
+        <p>
+          Ask questions about the FastAPI documentation and get answers
+          grounded in retrieved sources.
+        </p>
       </header>
 
-      <form className="query-form" onSubmit={handleSubmit}>
-        <label htmlFor="query">Question</label>
+      <section className="query-card">
+        <form className="query-form" onSubmit={handleSubmit}>
+          <label htmlFor="query">Ask a question</label>
 
-        <div className="query-row">
-          <input
-            id="query"
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="What is FastAPI?"
-            disabled={loading}
-          />
+          <div className="query-row">
+            <input
+              id="query"
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="What is FastAPI?"
+              disabled={loading}
+              autoComplete="off"
+            />
 
-          <button type="submit" disabled={loading || !query.trim()}>
-            {loading ? "Generating..." : "Ask"}
-          </button>
+            <button type="submit" disabled={loading || !query.trim()}>
+              {loading ? "Generating..." : "Ask"}
+            </button>
+          </div>
+
+          <p className="query-hint">
+            Answers are generated from the indexed FastAPI documentation.
+          </p>
+        </form>
+      </section>
+
+      {error && (
+        <div className="error" role="alert">
+          <strong>Request failed</strong>
+          <span>{error}</span>
         </div>
-      </form>
-
-      {error && <div className="error">{error}</div>}
+      )}
 
       {(answer || loading) && (
-        <section className="answer-section">
-          <h2>Answer</h2>
+        <section className="section answer-section">
+          <div className="section-heading">
+            <h2>Answer</h2>
+            {loading && <span className="status">Streaming</span>}
+          </div>
+
           <div className="answer">
-            {answer || "Generating answer..."}
+            {answer ? (
+              answer
+            ) : (
+              <span className="answer-placeholder">
+                Generating answer...
+              </span>
+            )}
+            {loading && answer && <span className="cursor" aria-hidden="true" />}
           </div>
         </section>
       )}
 
       {sources.length > 0 && (
-        <section className="sources-section">
-          <h2>Sources</h2>
+        <section className="section sources-section">
+          <div className="section-heading">
+            <div>
+              <h2>Sources</h2>
+              <p>Retrieved documentation used to generate the answer.</p>
+            </div>
+
+            <span className="source-count">
+              {sources.length} {sources.length === 1 ? "source" : "sources"}
+            </span>
+          </div>
 
           <div className="sources">
-            {sources.map((source) => (
+            {sources.map((source, index) => (
               <article className="source" key={source.chunk_id}>
                 <div className="source-header">
-                  <strong>{source.source}</strong>
-                  <span>Score: {source.score.toFixed(3)}</span>
+                  <div className="source-title">
+                    <span className="source-number">{index + 1}</span>
+                    <strong>{source.source}</strong>
+                  </div>
+
+                  <span className="score">
+                    {source.score.toFixed(3)}
+                  </span>
                 </div>
 
-                <div>{source.source_uri}</div>
-                <div>Chunk {source.chunk_index}</div>
+                <div className="source-uri">{source.source_uri}</div>
+
+                <div className="source-meta">
+                  <span>Chunk {source.chunk_index}</span>
+                  <span>Similarity {source.score.toFixed(3)}</span>
+                </div>
               </article>
             ))}
           </div>
@@ -118,9 +164,12 @@ function App() {
       {totalTime !== null && (
         <footer className="metrics">
           <span>
-            Retrieval: {retrievalTime?.toFixed(0) ?? "—"} ms
+            <strong>Retrieval</strong>{" "}
+            {retrievalTime?.toFixed(0) ?? "—"} ms
           </span>
-          <span>Total: {totalTime.toFixed(0)} ms</span>
+          <span>
+            <strong>Total</strong> {totalTime.toFixed(0)} ms
+          </span>
         </footer>
       )}
     </main>
