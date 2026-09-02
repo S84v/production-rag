@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 def get_rag_service(request: Request) -> RAGService:
-    return request.app.rag_service
+    return request.app.state.rag_service
 
 
 @router.post("/query")

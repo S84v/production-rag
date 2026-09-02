@@ -2,6 +2,7 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from production_rag.api.query import get_rag_service
 from production_rag.main import app
@@ -121,3 +122,18 @@ def test_query_endpoint_rejects_empty_query(client: TestClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_get_rag_service_returns_application_service(
+    client: TestClient,
+) -> None:
+    expected_service = app.state.rag_service
+
+    request = Request(
+        {
+            "type": "http",
+            "app": app,
+        }
+    )
+
+    assert get_rag_service(request) is expected_service
