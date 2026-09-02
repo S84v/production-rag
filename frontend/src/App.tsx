@@ -1,122 +1,130 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from "react";
+import { streamQuery, type Source } from "./api";
+import "./App.css";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [query, setQuery] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [sources, setSources] = useState<Source[]>([]);
+  const [retrievalTime, setRetrievalTime] = useState<number | null>(null);
+  const [totalTime, setTotalTime] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const trimmedQuery = query.trim();
+
+    if (!trimmedQuery || loading) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setAnswer("");
+    setSources([]);
+    setRetrievalTime(null);
+    setTotalTime(null);
+
+    try {
+      await streamQuery(
+        {
+          query: trimmedQuery,
+          collection: "fastapi",
+          limit: 5,
+        },
+        {
+          onEvent: (event) => {
+            if (event.type === "sources") {
+              setSources(event.sources);
+            } else if (event.type === "text") {
+              setAnswer((current) => current + event.text);
+            } else if (event.type === "complete") {
+              setRetrievalTime(event.retrieval_time_ms);
+              setTotalTime(event.total_time_ms);
+            }
+          },
+        },
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Something went wrong.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <main className="app">
+      <header className="header">
+        <h1>Production RAG</h1>
+        <p>Ask questions about the FastAPI documentation.</p>
+      </header>
 
-      <div className="ticks"></div>
+      <form className="query-form" onSubmit={handleSubmit}>
+        <label htmlFor="query">Question</label>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        <div className="query-row">
+          <input
+            id="query"
+            type="text"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="What is FastAPI?"
+            disabled={loading}
+          />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+          <button type="submit" disabled={loading || !query.trim()}>
+            {loading ? "Generating..." : "Ask"}
+          </button>
+        </div>
+      </form>
+
+      {error && <div className="error">{error}</div>}
+
+      {(answer || loading) && (
+        <section className="answer-section">
+          <h2>Answer</h2>
+          <div className="answer">
+            {answer || "Generating answer..."}
+          </div>
+        </section>
+      )}
+
+      {sources.length > 0 && (
+        <section className="sources-section">
+          <h2>Sources</h2>
+
+          <div className="sources">
+            {sources.map((source) => (
+              <article className="source" key={source.chunk_id}>
+                <div className="source-header">
+                  <strong>{source.source}</strong>
+                  <span>Score: {source.score.toFixed(3)}</span>
+                </div>
+
+                <div>{source.source_uri}</div>
+                <div>Chunk {source.chunk_index}</div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {totalTime !== null && (
+        <footer className="metrics">
+          <span>
+            Retrieval: {retrievalTime?.toFixed(0) ?? "—"} ms
+          </span>
+          <span>Total: {totalTime.toFixed(0)} ms</span>
+        </footer>
+      )}
+    </main>
+  );
 }
 
-export default App
+export default App;
