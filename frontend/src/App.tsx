@@ -2,6 +2,13 @@ import { useState } from "react";
 import { streamQuery, type Source } from "./api";
 import "./App.css";
 
+function getSourceFilename(sourceUri: string): string {
+  const path = sourceUri.split("?")[0];
+  const filename = path.split("/").filter(Boolean).pop();
+
+  return filename ? decodeURIComponent(filename) : sourceUri;
+}
+
 function App() {
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
@@ -117,7 +124,9 @@ function App() {
                 Generating answer...
               </span>
             )}
-            {loading && answer && <span className="cursor" aria-hidden="true" />}
+            {loading && answer && (
+              <span className="cursor" aria-hidden="true" />
+            )}
           </div>
         </section>
       )}
@@ -141,7 +150,7 @@ function App() {
                 <div className="source-header">
                   <div className="source-title">
                     <span className="source-number">{index + 1}</span>
-                    <strong>{source.source}</strong>
+                    <strong>{getSourceFilename(source.source_uri)}</strong>
                   </div>
 
                   <span className="score">
