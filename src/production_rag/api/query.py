@@ -27,7 +27,6 @@ async def query(
         )
 
     async def stream_response() -> AsyncIterator[str]:
-        text_parts: list[str] = []
 
         async for event in rag_service.generate(
             query=request.query,
@@ -52,7 +51,12 @@ async def query(
                 yield json.dumps(payload) + "\n"
 
             elif event.type == "text" and event.text is not None:
-                text_parts.append(event.text)
+                payload: dict[str, object] = {
+                    "type": "text",
+                    "text": event.text,
+                }
+
+                yield json.dumps(payload) + "\n"
 
             elif event.type == "complete":
                 payload: dict[str, object] = {
@@ -62,16 +66,6 @@ async def query(
                 }
 
                 yield json.dumps(payload) + "\n"
-
-        yield (
-            json.dumps(
-                {
-                    "type": "text",
-                    "text": "".join(text_parts),
-                }
-            )
-            + "\n"
-        )
 
     return StreamingResponse(
         stream_response(),

@@ -96,13 +96,17 @@ def test_query_endpoint_streams_rag_response(
             ],
         },
         {
-            "type": "complete",
-            "retrieval_time_ms": 100.0,
-            "total_time_ms": 500.0,
+            "type": "text",
+            "text": "FastAPI",
         },
         {
             "type": "text",
-            "text": "FastAPI is a web framework.",
+            "text": " is a web framework.",
+        },
+        {
+            "type": "complete",
+            "retrieval_time_ms": 100.0,
+            "total_time_ms": 500.0,
         },
     ]
 
