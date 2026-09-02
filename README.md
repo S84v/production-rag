@@ -70,7 +70,7 @@ The system processes a Markdown corpus through ingestion, chunking, embedding, v
                               query │
                                     ▼
 ┌──────────────┐          ┌──────────────────────┐
-│    Client    │ ───────► │  RetrievalService   │
+│    Client    │ ───────► │  RetrievalService    │
 └──────────────┘          │                      │
                           │ query embedding      │
                           │ Qdrant search        │
