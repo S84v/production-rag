@@ -38,6 +38,9 @@ class RAGService:
         self.retrieval_service = retrieval_service or RetrievalService()
         self.llm_service = llm_service or LLMService()
 
+    async def collection_exists(self, collection_name: str) -> bool:
+        return await self.retrieval_service.collection_exists(collection_name)
+
     async def generate(
         self,
         query: str,
@@ -108,6 +111,7 @@ class RAGService:
 
             yield RAGEvent(
                 type="complete",
+                retrieval_time_ms=retrieval_time_ms,
                 total_time_ms=total_time_ms,
             )
 

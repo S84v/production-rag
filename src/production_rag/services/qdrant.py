@@ -36,6 +36,13 @@ class QdrantVectorStore:
             points=[PointStruct(id=str(point_id), vector=vector, payload=payload)],
         )
 
+    async def collection_exists(self, collection_name: str) -> bool:
+        collections = await self.client.get_collections()
+
+        return any(
+            collection.name == collection_name for collection in collections.collections
+        )
+
     async def search(
         self, collection_name: str, vector: list[float], limit: int
     ) -> list[tuple[UUID, float]]:

@@ -28,6 +28,9 @@ class FakeQdrantClient:
 
         self.upserted_points.append((collection_name, points))
 
+    async def collection_exists(self, collection_name):
+        return collection_name in self.collections
+
     async def query_points(
         self, collection_name, query, limit, with_payload, with_vectors
     ):

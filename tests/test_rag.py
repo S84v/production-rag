@@ -94,6 +94,7 @@ async def test_rag_service_retrieves_context_and_streams_answer():
 
     assert events[-1] == RAGEvent(
         type="complete",
+        retrieval_time_ms=events[-1].retrieval_time_ms,
         total_time_ms=events[-1].total_time_ms,
     )
 

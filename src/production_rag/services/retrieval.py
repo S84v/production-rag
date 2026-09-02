@@ -25,6 +25,9 @@ class RetrievalService:
         self.embedding_service = embedding_service or EmbeddingService()
         self.vector_store = vector_store or QdrantVectorStore()
 
+    async def collection_exists(self, collection_name: str) -> bool:
+        return await self.vector_store.collection_exists(collection_name)
+
     async def retrieve(
         self, query: str, collection_name: str, limit: int = 5
     ) -> list[RetrievalResult]:

@@ -2,7 +2,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from production_rag.schemas.query import QueryRequest
@@ -20,6 +20,12 @@ async def query(
     request: QueryRequest,
     rag_service: Annotated[RAGService, Depends(get_rag_service)],
 ) -> StreamingResponse:
+    if not await rag_service.collection_exists(request.collection):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{request.collection}' not found",
+        )
+
     async def stream_response() -> AsyncIterator[str]:
         text_parts: list[str] = []
 

@@ -13,6 +13,9 @@ class FakeRAGService:
     def __init__(self) -> None:
         self.calls = []
 
+    async def collection_exists(self, collection_name: str) -> bool:
+        return collection_name == "fastapi"
+
     async def generate(self, query: str, collection_name: str, limit: int = 5):
         self.calls.append(
             {
@@ -137,3 +140,19 @@ def test_get_rag_service_returns_application_service(
     )
 
     assert get_rag_service(request) is expected_service
+
+
+def test_query_endpoint_rejects_nonexistent_collection(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/query",
+        json={
+            "query": "What is FastAPI?",
+            "collection": "does-not-exist",
+            "limit": 5,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Collection 'does-not-exist' not found"}
