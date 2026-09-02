@@ -910,7 +910,14 @@ Evaluation
       ↓
 OpenTelemetry tracing
 ```
+## Roadmap
 
-The project has moved beyond the initial implementation stage and is currently focused on **evaluation, correctness, and production hardening**.
+Potential future work includes:
 
-The next improvements should prioritize measurable reliability and operational value rather than adding architectural complexity.
+1. Improve operational documentation.
+2. Tighten ingestion/vector lifecycle consistency.
+3. Expand evaluation methodology and datasets.
+4. Improve failure handling around external services.
+5. Add targeted production-hardening tests.
+6. Revisit caching only if profiling demonstrates a meaningful need.
+7. Add deployment-oriented configuration if the system is eventually deployed.
