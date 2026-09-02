@@ -2,15 +2,27 @@
 
 A production-oriented Retrieval-Augmented Generation (RAG) system built with FastAPI, PostgreSQL, Qdrant, Sentence Transformers, and DeepSeek.
 
-The project focuses on the engineering problems that appear when moving beyond a basic RAG prototype: document versioning, idempotent ingestion, structure-aware chunking, vector/metadata separation, PostgreSQL hydration, lifecycle management, evaluation, streaming responses, and observability.
+The project focuses on the engineering problems that appear when moving beyond a basic RAG prototype:
 
-## Overview
+* structure-aware document ingestion
+* idempotent document processing
+* document versioning
+* separation of metadata and vector storage
+* PostgreSQL hydration after vector retrieval
+* asynchronous LLM generation
+* streaming API responses
+* application lifecycle management
+* retrieval and generation evaluation
+* OpenTelemetry instrumentation
+* automated testing and linting
 
-The system ingests Markdown documentation, converts it into structure-aware chunks, generates embeddings, stores metadata in PostgreSQL and vectors in Qdrant, retrieves relevant context, and generates an answer using a DeepSeek-compatible LLM API.
+The goal is not to build a large distributed platform. The goal is to demonstrate a clean, testable RAG architecture with sensible production-oriented engineering decisions.
 
-The current evaluation corpus is the FastAPI documentation.
+---
 
-### Request flow
+## Architecture
+
+The system processes a Markdown corpus through ingestion, chunking, embedding, vector storage, retrieval, metadata hydration, and LLM generation.
 
 ```text
                          ┌──────────────────────┐
@@ -20,29 +32,31 @@ The current evaluation corpus is the FastAPI documentation.
                                     │
                                     ▼
                          ┌──────────────────────┐
-                         │ FilesystemSource     │
-                         │ SHA-256 content hash │
+                         │  FilesystemSource    │
+                         │  SHA-256 hashing     │
                          └──────────┬───────────┘
                                     │
                                     ▼
                          ┌──────────────────────┐
-                         │ MarkdownChunker      │
+                         │   MarkdownChunker    │
                          │ headings + code      │
                          │ structure metadata   │
                          └──────────┬───────────┘
                                     │
                                     ▼
                          ┌──────────────────────┐
-                         │    PostgreSQL        │
+                         │     PostgreSQL       │
+                         │                      │
+                         │ collections          │
                          │ documents            │
                          │ versions             │
                          │ chunks               │
-                         │ embeddings metadata  │
+                         │ embedding metadata   │
                          └──────────┬───────────┘
                                     │
                                     ▼
                          ┌──────────────────────┐
-                         │ EmbeddingService     │
+                         │   EmbeddingService   │
                          │ BGE-small-en-v1.5    │
                          │ 384 dimensions       │
                          └──────────┬───────────┘
@@ -56,109 +70,110 @@ The current evaluation corpus is the FastAPI documentation.
                               query │
                                     ▼
 ┌──────────────┐          ┌──────────────────────┐
-│   Client     │ ───────► │   RetrievalService   │
-└──────────────┘          │ embed → search →     │
+│    Client    │ ───────► │  RetrievalService   │
+└──────────────┘          │                      │
+                          │ query embedding      │
+                          │ Qdrant search        │
                           │ PostgreSQL hydration │
                           └──────────┬───────────┘
                                      │
                                      ▼
                           ┌──────────────────────┐
                           │     RAGService       │
-                          │ retrieval + prompt   │
-                          │ + generation         │
+                          │                      │
+                          │ retrieval            │
+                          │ context construction │
+                          │ LLM generation       │
                           └──────────┬───────────┘
                                      │
                                      ▼
                           ┌──────────────────────┐
-                          │     DeepSeek LLM     │
-                          │      streaming       │
+                          │     DeepSeek API     │
+                          │  async streaming     │
                           └──────────┬───────────┘
                                      │
                                      ▼
                           ┌──────────────────────┐
-                          │ FastAPI /query       │
-                          │ NDJSON stream        │
+                          │    FastAPI /query    │
+                          │      NDJSON          │
                           └──────────────────────┘
 ```
 
-## Why this architecture?
+### Persistence boundary
 
-This project intentionally keeps the architecture simple while making the persistence boundaries explicit.
+PostgreSQL is the authoritative store for application metadata.
 
-### PostgreSQL owns metadata
+Qdrant is responsible for vector similarity search.
 
-PostgreSQL stores:
-
-* collections
-* documents
-* document versions
-* chunks
-* embedding metadata
-
-It is the source of truth for document and chunk metadata.
-
-### Qdrant owns vectors
-
-Qdrant stores the actual embedding vectors used for similarity search.
-
-The application maps:
+The application uses the following identity relationships:
 
 ```text
 Application Collection → Qdrant Collection
+
 Chunk                  → Embedding
+
 Embedding.id           → Qdrant point ID
 ```
 
-Retrieval does not treat Qdrant payloads as the authoritative document store. Qdrant identifies relevant vectors, after which PostgreSQL hydrates the corresponding chunk metadata.
+Qdrant search returns embedding IDs and similarity scores. The application then hydrates the corresponding chunk and document metadata from PostgreSQL.
 
-This keeps the responsibilities of the two persistence systems clear.
+Qdrant payloads are therefore not treated as the authoritative metadata store.
+
+---
 
 ## Tech stack
 
-| Component            | Technology                             |
-| -------------------- | -------------------------------------- |
-| Language             | Python 3.12+                           |
-| API                  | FastAPI                                |
-| Database             | PostgreSQL 17                          |
-| Vector database      | Qdrant                                 |
-| Cache/infrastructure | Redis                                  |
-| ORM                  | SQLAlchemy 2                           |
-| Migrations           | Alembic                                |
-| Embeddings           | `BAAI/bge-small-en-v1.5`               |
-| LLM                  | DeepSeek API via OpenAI-compatible SDK |
-| Markdown parsing     | markdown-it-py                         |
-| Evaluation           | DeepEval + custom retrieval evaluation |
-| Observability        | OpenTelemetry                          |
-| Testing              | pytest                                 |
-| Linting/formatting   | Ruff                                   |
-| Package management   | uv                                     |
-| Infrastructure       | Docker Compose                         |
+| Area                | Technology                             |
+| ------------------- | -------------------------------------- |
+| Language            | Python 3.12+                           |
+| API                 | FastAPI                                |
+| Database            | PostgreSQL 17                          |
+| Vector database     | Qdrant                                 |
+| Infrastructure      | Docker Compose                         |
+| ORM                 | SQLAlchemy 2                           |
+| Migrations          | Alembic                                |
+| Embeddings          | `BAAI/bge-small-en-v1.5`               |
+| Embedding dimension | 384                                    |
+| LLM                 | DeepSeek API                           |
+| LLM client          | OpenAI Python SDK                      |
+| Markdown parsing    | markdown-it-py                         |
+| Evaluation          | Custom retrieval evaluation + DeepEval |
+| Observability       | OpenTelemetry                          |
+| Testing             | pytest                                 |
+| Linting             | Ruff                                   |
+| Package management  | uv                                     |
 
-## Key engineering features
+Redis is included in the development infrastructure, but it is not currently part of the RAG request path.
+
+---
+
+## Core engineering features
 
 ### Structure-aware Markdown chunking
 
-Markdown is parsed structurally rather than being split using arbitrary character boundaries.
+Markdown is parsed structurally using `markdown-it-py` rather than being split using arbitrary character boundaries.
 
-Chunks preserve information such as:
+Chunks preserve structural information including:
 
 * heading hierarchy
-* heading path
+* heading paths
 * code blocks
 * chunk ordering
 * document/version relationships
 
-The default chunk size is approximately 4,000 characters.
+The default maximum chunk size is approximately 4,000 characters.
 
-This is particularly useful for technical documentation where headings and code examples provide important retrieval context.
+This is particularly useful for technical documentation where headings and code examples contribute significant retrieval context.
+
+---
 
 ### Idempotent ingestion
 
-Documents are identified using SHA-256 content hashes.
+Filesystem documents are identified using SHA-256 content hashes.
 
 Re-ingesting an unchanged document does not create unnecessary new document versions.
 
-The ingestion pipeline is organized around:
+The ingestion flow is:
 
 ```text
 FilesystemSource
@@ -174,57 +189,183 @@ EmbeddingService
 Qdrant
 ```
 
+The CLI reports:
+
+* documents discovered
+* new documents
+* chunks processed
+* embeddings persisted
+
+---
+
 ### Versioned document model
 
-The database separates:
+The persistence model separates document identity from individual document versions.
 
 ```text
 Collection
-   └── Document
-         └── DocumentVersion
-               └── Chunk
-                     └── Embedding
+    │
+    └── Document
+          │
+          └── DocumentVersion
+                │
+                └── Chunk
+                      │
+                      └── Embedding
 ```
 
-This allows document identity and document content/version identity to remain separate.
+This allows the system to track document content independently from the stable document identity.
+
+---
+
+### Separate embedding entity
+
+Embeddings are modeled as their own persistence entity rather than storing vectors directly with chunks.
+
+An embedding records:
+
+* chunk identity
+* model name
+* model version
+* vector dimensions
+
+Embedding identity is independent from chunk identity.
+
+The current embedding model is:
+
+```text
+BAAI/bge-small-en-v1.5
+Model version: 1
+Dimensions: 384
+Distance: Cosine
+```
+
+The actual vectors are stored in Qdrant.
+
+---
 
 ### Retrieval with PostgreSQL hydration
 
-The retrieval pipeline is:
+The retrieval path is:
 
 ```text
 User query
     ↓
-BGE embedding
+BGE query embedding
     ↓
 Qdrant similarity search
     ↓
-Embedding IDs / chunk IDs
+Embedding IDs + similarity scores
     ↓
-PostgreSQL hydration
+PostgreSQL lookup
+    ↓
+Chunk + source metadata
     ↓
 Ranked RetrievalResult objects
 ```
 
-This avoids coupling the application to Qdrant payloads for authoritative metadata.
+Only the requested number of vector results is retrieved.
 
-### Streaming generation
+Results that cannot be hydrated from PostgreSQL are excluded from the final retrieval result.
 
-The LLM integration uses the OpenAI Python SDK against DeepSeek's OpenAI-compatible API.
+---
 
-Generation is streamed asynchronously rather than waiting for the complete answer before returning it.
+### End-to-end RAG generation
 
-### FastAPI lifecycle management
+`RAGService` composes retrieval and LLM generation.
 
-A single `RAGService` is created during application startup and closed during shutdown.
+The service:
 
-This keeps long-lived resources such as the LLM and vector-store clients under explicit application lifecycle management.
+1. retrieves relevant chunks
+2. records retrieval latency
+3. exposes retrieved sources
+4. builds the retrieved context
+5. sends the question and context to the LLM
+6. streams generated text
+7. reports total RAG latency
 
-### OpenTelemetry tracing
+The generation instructions explicitly require the model to use only the retrieved context and to state when the context does not contain enough information.
 
-The application instruments FastAPI and the RAG pipeline with OpenTelemetry.
+---
 
-RAG-level telemetry includes information such as:
+### Streaming responses
+
+The FastAPI `/query` endpoint returns:
+
+```text
+application/x-ndjson
+```
+
+The stream contains structured events for:
+
+* retrieved sources
+* generated text
+* completion/timing information
+
+A response is conceptually structured as:
+
+```json
+{"type":"sources","sources":[...]}
+{"type":"complete","retrieval_time_ms":...,"total_time_ms":...}
+{"type":"text","text":"..."}
+```
+
+The generated text is accumulated by the API and emitted as a final `text` event.
+
+---
+
+### Request validation
+
+The API validates the request before starting the streaming response.
+
+Current behavior includes:
+
+| Condition                     | Response                 |
+| ----------------------------- | ------------------------ |
+| Valid query                   | `200` streaming response |
+| Empty query                   | `422`                    |
+| Invalid limit                 | `422`                    |
+| Missing required field        | `422`                    |
+| Malformed JSON                | `422`                    |
+| Nonexistent Qdrant collection | `404`                    |
+
+Collection existence is checked before the `StreamingResponse` is created. This prevents an invalid collection from producing a broken streaming response.
+
+---
+
+### Application lifecycle management
+
+The FastAPI application creates a single `RAGService` during application startup.
+
+```text
+Application startup
+        ↓
+RAGService
+        ↓
+RetrievalService
+        ↓
+Qdrant client
+
+        +
+
+LLMService
+        ↓
+DeepSeek client
+```
+
+These resources are explicitly closed during application shutdown.
+
+This avoids creating a new long-lived client for every API request.
+
+---
+
+### OpenTelemetry instrumentation
+
+FastAPI is instrumented with OpenTelemetry.
+
+The RAG pipeline also creates a dedicated `rag.generate` span.
+
+The current RAG span records attributes including:
 
 * collection
 * retrieval limit
@@ -232,7 +373,9 @@ RAG-level telemetry includes information such as:
 * retrieval latency
 * total RAG latency
 
-The current configuration exports spans to the console, making the tracing behavior easy to inspect during development.
+The current development configuration exports spans through the OpenTelemetry console exporter.
+
+---
 
 ## Getting started
 
@@ -242,7 +385,8 @@ Install:
 
 * Python 3.12+
 * uv
-* Docker and Docker Compose
+* Docker
+* Docker Compose
 
 Clone the repository and enter the project directory.
 
@@ -252,6 +396,8 @@ Install dependencies:
 uv sync
 ```
 
+---
+
 ### Environment configuration
 
 Create the local environment file:
@@ -260,31 +406,57 @@ Create the local environment file:
 cp .env.example .env
 ```
 
-Configure the required application settings.
-
-The project uses:
+The application uses local services by default:
 
 ```text
 PostgreSQL → localhost:5432
 Qdrant     → localhost:6333
-Redis      → localhost:6379
 ```
 
-The DeepSeek API key should be configured locally and must not be committed to the repository.
+The DeepSeek API key should be configured locally.
+
+Do not commit API keys or other secrets to the repository.
+
+The DeepSeek settings currently include:
+
+```text
+DEEPSEEK_API_KEY
+DEEPSEEK_BASE_URL
+DEEPSEEK_MODEL
+DEEPSEEK_TIMEOUT
+```
+
+The current default model configured by the application is:
+
+```text
+deepseek-v4-flash
+```
+
+---
 
 ### Start infrastructure
 
-Start PostgreSQL, Qdrant, and Redis:
+Start the development infrastructure:
 
 ```bash
 docker compose up -d
 ```
 
-Check the running services:
+Check service status:
 
 ```bash
 docker compose ps
 ```
+
+The Compose configuration currently provides:
+
+* PostgreSQL
+* Qdrant
+* Redis
+
+Redis is available for future use but is not currently required by the RAG request path.
+
+---
 
 ### Run database migrations
 
@@ -294,9 +466,11 @@ Apply the current Alembic migrations:
 uv run alembic upgrade head
 ```
 
-## Ingest a corpus
+---
 
-The project provides a CLI for Markdown ingestion.
+## Ingestion
+
+The project provides a CLI for ingesting Markdown documentation.
 
 For example:
 
@@ -306,22 +480,34 @@ uv run production-rag ingest \
   --collection fastapi
 ```
 
-The command:
+The ingestion command:
 
-1. Creates the application collection if necessary.
-2. Discovers Markdown files.
-3. Computes content hashes.
-4. Creates document/version records.
-5. Chunks the Markdown documents.
-6. Generates embeddings.
-7. Persists embedding metadata.
-8. Stores vectors in Qdrant.
+1. creates the application collection if necessary
+2. discovers Markdown files recursively
+3. calculates SHA-256 content hashes
+4. creates or reuses document records
+5. creates document versions when required
+6. chunks Markdown documents
+7. generates embeddings
+8. persists embedding metadata
+9. creates the corresponding Qdrant collection if necessary
+10. upserts vectors into Qdrant
 
-The CLI reports the number of discovered documents, new documents, processed chunks, and persisted embeddings.
+The embedding service uses:
 
-## Query the RAG system
+```text
+BAAI/bge-small-en-v1.5
+384 dimensions
+Cosine similarity
+```
+
+---
+
+## Querying
 
 ### CLI
+
+The RAG system can be queried directly from the command line:
 
 ```bash
 uv run production-rag query \
@@ -330,7 +516,15 @@ uv run production-rag query \
   --limit 5
 ```
 
-The CLI prints the generated answer followed by the retrieved sources.
+The CLI streams the generated answer and then prints the retrieved sources.
+
+Example source information includes:
+
+```text
+- filesystem://path-params.md (chunk 17, similarity: 0.863)
+```
+
+---
 
 ### API
 
@@ -352,7 +546,7 @@ Expected response:
 {"status":"ok"}
 ```
 
-Query endpoint:
+Query the RAG endpoint:
 
 ```bash
 curl -N -X POST http://localhost:8000/query \
@@ -364,68 +558,108 @@ curl -N -X POST http://localhost:8000/query \
   }'
 ```
 
-The endpoint returns an NDJSON stream containing retrieval sources, generated text, and completion information.
+The endpoint returns an NDJSON stream.
 
-A typical response is conceptually:
-
-```json
-{"type":"sources","sources":[...]}
-{"type":"text","text":"..."}
-{"type":"complete","retrieval_time_ms":...,"total_time_ms":...}
-```
-
-The exact event payload is defined by the API schemas.
-
-### Request validation
-
-The API validates requests before starting the response stream.
-
-Examples include:
-
-* empty queries → `422`
-* invalid retrieval limits → `422`
-* missing required fields → `422`
-* malformed JSON → `422`
-* nonexistent collections → `404`
-
-Valid requests stream results using `application/x-ndjson`.
+---
 
 ## Evaluation
 
-The project includes both retrieval and generation evaluation.
+The project currently evaluates both retrieval and end-to-end generation.
 
-The current retrieval evaluation uses 24 FastAPI documentation examples.
+The evaluation corpus is the FastAPI documentation.
 
-The primary retrieval precision metric is intentionally **document-level Precision@K** rather than chunk-level precision. This avoids over-penalizing a retrieval system when multiple relevant chunks belong to the same source document.
-
-### Retrieval baseline
-
-|  K | Precision@K | Recall@K |  Hit@K |    MRR |
-| -: | ----------: | -------: | -----: | -----: |
-|  1 |      0.4167 |   0.3264 | 0.4167 | 0.4167 |
-|  3 |      0.1806 |   0.4028 | 0.4583 | 0.4375 |
-|  5 |      0.1500 |   0.5417 | 0.6250 | 0.4750 |
-| 10 |      0.0833 |   0.6250 | 0.7083 | 0.4889 |
-| 20 |      0.0521 |   0.7569 | 0.8333 | 0.4991 |
-
-Detailed evaluation artifacts are available under:
+The dataset contains:
 
 ```text
-docs/evaluation/
-data/evaluation/
+24 evaluation examples
 ```
 
-The project also contains generation evaluation using DeepEval.
+### Retrieval evaluation
+
+The current retrieval evaluation is **chunk-level**.
+
+Each evaluation example contains a set of relevant chunk IDs:
+
+```text
+relevant_chunks
+```
+
+Retrieved chunks are compared against those labeled relevant chunks.
+
+The evaluation reports:
+
+* Precision@K — chunk level
+* Recall@K — chunk level
+* Hit@K — chunk level
+* MRR
+
+The implementation explicitly reports these metrics as:
+
+```text
+Precision@K Chunks
+Recall@K Chunks
+Hit@K Chunks
+MRR
+```
+
+### Current retrieval baseline
+
+|  K | Precision@K Chunks | Recall@K Chunks | Hit@K Chunks |    MRR |
+| -: | -----------------: | --------------: | -----------: | -----: |
+|  1 |             0.4167 |          0.3264 |       0.4167 | 0.4167 |
+|  3 |             0.1806 |          0.4028 |       0.4583 | 0.4375 |
+|  5 |             0.1500 |          0.5417 |       0.6250 | 0.4750 |
+| 10 |             0.0833 |          0.6250 |       0.7083 | 0.4889 |
+| 20 |             0.0521 |          0.7569 |       0.8333 | 0.4991 |
+
+The baseline is documented in:
+
+```text
+docs/evaluation/retrieval_baseline.md
+```
+
+The evaluation dataset is:
+
+```text
+data/evaluation/fastapi.json
+```
+
+---
+
+### Generation evaluation
+
+The generation evaluation runs the actual end-to-end RAG pipeline against the evaluation dataset.
+
+For each example it records:
+
+* question
+* reference answer
+* generated answer
+* retrieved sources
+* retrieval latency
+* total RAG latency
+
+The generated results are written to:
+
+```text
+docs/evaluation/generation_results.md
+```
+
+The current artifact contains 24 evaluation examples and is intended for manual comparison of generated answers against the reference answers and retrieved context.
+
+DeepEval is included as the generation-evaluation dependency for further automated evaluation.
+
+---
 
 ## Testing
 
-Run the test suite:
+Run the complete test suite:
 
 ```bash
 uv run pytest -q
 ```
 
-For the telemetry-enabled test environment, running without pytest's output capture can be useful:
+For environments where OpenTelemetry console output interacts with pytest's output capture, the suite can also be run with capture disabled:
 
 ```bash
 uv run pytest -q -s
@@ -437,151 +671,246 @@ Run Ruff:
 uv run ruff check .
 ```
 
-The test suite covers:
+The project is configured for:
 
-* API behavior
-* request validation
-* health endpoint
+```text
+Python 3.12
+Ruff line length: 88
+pytest asyncio mode: auto
+```
+
+The test suite covers the major vertical slices of the application, including:
+
+* application configuration
 * Markdown chunking
 * filesystem ingestion
-* document/version persistence
+* document ingestion
+* document versioning
 * repositories
 * embeddings
-* Qdrant behavior
+* Qdrant integration boundary
 * retrieval
-* LLM integration
+* LLM service
 * RAG orchestration
-* evaluation
-* lifecycle management
-* application settings
+* API behavior
+* request validation
+* collection validation
+* application lifecycle
+* evaluation logic
+
+---
 
 ## Project structure
 
 ```text
 production-rag/
 ├── alembic/
-│   └── migrations
+│   ├── env.py
+│   └── versions/
+│       ├── 475d329a606c_create_initial_schema.py
+│       └── 4d9a0c20621f_remove_embedding_vector_key.py
+│
 ├── data/
 │   ├── evaluation/
-│   └── raw/
+│   │   ├── fastapi.json
+│   │   └── results/
+│   │       └── fastapi-answer-baseline-2026-09-01.json
+│   ├── raw/
+│   │   └── fastapi/
+│   └── tmp/
+│
 ├── docs/
 │   ├── adr/
+│   │   ├── 001-multi-collection-workspaces.md
+│   │   ├── 002-embeddings-as-separate-domain-entity.md
+│   │   ├── 003-structure-aware-markdown-ingestion.md
+│   │   └── 004-selective-use-of-langchain.md
 │   ├── evaluation/
+│   │   ├── generation_results.md
+│   │   └── retrieval_baseline.md
 │   └── corpus.md
+│
 ├── src/
 │   └── production_rag/
 │       ├── api/
+│       │   └── query.py
 │       ├── core/
+│       │   └── settings.py
 │       ├── db/
 │       ├── evaluation/
+│       │   ├── answer.py
+│       │   ├── dataset.py
+│       │   ├── generation.py
+│       │   └── retrieval.py
 │       ├── ingestion/
 │       ├── models/
 │       ├── repositories/
-│       ├── retrieval/
 │       ├── schemas/
 │       ├── services/
+│       │   ├── batch_ingestion.py
+│       │   ├── document_ingestion.py
+│       │   ├── embedding.py
+│       │   ├── llm.py
+│       │   ├── qdrant.py
+│       │   ├── rag.py
+│       │   └── retrieval.py
 │       ├── telemetry.py
 │       └── main.py
+│
 ├── tests/
+├── .env.example
+├── alembic.ini
 ├── docker-compose.yml
 ├── pyproject.toml
 └── uv.lock
 ```
 
+---
+
+## Corpus
+
+The current evaluation corpus is the FastAPI documentation.
+
+The corpus is pinned to a specific FastAPI documentation revision to keep evaluation reproducible.
+
+Corpus details are documented in:
+
+```text
+docs/corpus.md
+```
+
+The local corpus is stored under:
+
+```text
+data/raw/fastapi/
+```
+
+---
+
 ## Design decisions
 
-Important architectural decisions are documented as ADRs under:
+Important architectural decisions are documented as Architecture Decision Records under:
 
 ```text
 docs/adr/
 ```
 
-These documents capture decisions around areas such as:
+Current ADRs cover:
 
-* persistence boundaries
-* vector storage
-* retrieval architecture
-* selective technology choices
+### Multi-collection architecture
 
-The project intentionally avoids introducing large orchestration frameworks where they do not provide enough value.
+Application collections map to independent Qdrant collections.
 
-In particular, ingestion does not depend on LangChain.
+This allows separate corpora/workspaces to maintain independent vector indexes.
 
-## Current scope
+### Embeddings as a separate domain entity
 
-The project is intentionally designed as a production-oriented portfolio system rather than a complete SaaS platform.
+Embeddings are modeled separately from chunks so that embedding model identity and versioning remain explicit.
 
-Implemented capabilities include:
+### Structure-aware Markdown ingestion
+
+Markdown structure is retained during chunking instead of treating the corpus as plain text.
+
+### Selective technology usage
+
+The project avoids adopting frameworks simply because they are common in RAG tutorials.
+
+In particular, the core ingestion pipeline does not depend on LangChain.
+
+---
+
+## Scope
+
+This project intentionally targets a production-oriented portfolio implementation rather than a full SaaS platform.
+
+### Implemented
 
 * [x] Markdown ingestion
-* [x] Structure-aware chunking
-* [x] Content-hash-based idempotency
+* [x] Recursive filesystem source
+* [x] SHA-256 content hashing
+* [x] Idempotent document ingestion
 * [x] Document versioning
+* [x] Structure-aware Markdown chunking
 * [x] PostgreSQL persistence
+* [x] Separate embedding entity
+* [x] BGE-small embeddings
 * [x] Qdrant vector storage
-* [x] Embedding generation
+* [x] Qdrant collection validation
 * [x] PostgreSQL retrieval hydration
 * [x] Similarity retrieval
-* [x] DeepSeek generation
-* [x] Streaming RAG responses
-* [x] CLI
-* [x] FastAPI API
+* [x] DeepSeek LLM integration
+* [x] Asynchronous streaming generation
+* [x] End-to-end RAG orchestration
+* [x] CLI ingestion
+* [x] CLI querying
+* [x] FastAPI `/query` endpoint
+* [x] NDJSON streaming responses
 * [x] Request validation
-* [x] Lifecycle management
+* [x] Nonexistent collection handling
+* [x] Application lifecycle management
 * [x] Retrieval evaluation
-* [x] Generation evaluation
+* [x] Generation evaluation artifacts
 * [x] OpenTelemetry instrumentation
 * [x] Automated tests
 * [x] Ruff linting
 
+---
+
 ## Deliberately out of scope
 
-The architecture does not currently introduce distributed infrastructure simply for the sake of appearing "production ready."
+The project deliberately avoids adding distributed infrastructure without a demonstrated requirement.
 
-Examples of intentionally avoided complexity include:
+Currently avoided:
 
-* Celery-based task orchestration
-* Kafka/event streaming
-* Outbox patterns
+* Celery
+* Kafka
+* event-driven outbox architecture
 * Kubernetes
 * distributed transactions
-* unnecessary caching layers
-* large RAG frameworks for ingestion
+* unnecessary caching
+* unnecessary service decomposition
+* large orchestration frameworks for ingestion
 
-These can be introduced later if an actual requirement justifies them.
+Redis is present in Docker Compose but is not currently used by the RAG request path.
 
-## Roadmap
+The guiding principle is:
 
-The next engineering priorities are focused on hardening rather than continuously adding features.
+> Add complexity when a measurable requirement justifies it, not simply to make the architecture look more "production."
 
-Potential future work includes:
+---
 
-1. Improve operational documentation.
-2. Tighten ingestion/vector lifecycle consistency.
-3. Expand evaluation methodology and datasets.
-4. Improve failure handling around external services.
-5. Add targeted production-hardening tests.
-6. Revisit caching only if profiling demonstrates a meaningful need.
-7. Add deployment-oriented configuration if the system is eventually deployed.
-
-The guiding principle is to prefer measurable improvements over architectural complexity.
-
-## Project status
+## Current status
 
 The core RAG vertical slice is functional:
 
 ```text
-Corpus
-  → ingestion
-  → chunking
-  → embeddings
-  → Qdrant
-  → retrieval
-  → PostgreSQL hydration
-  → DeepSeek generation
-  → streaming API
-  → evaluation
-  → telemetry
+Markdown corpus
+      ↓
+Filesystem ingestion
+      ↓
+Structure-aware chunking
+      ↓
+PostgreSQL metadata
+      ↓
+BGE embeddings
+      ↓
+Qdrant
+      ↓
+Similarity retrieval
+      ↓
+PostgreSQL hydration
+      ↓
+Context construction
+      ↓
+DeepSeek generation
+      ↓
+Streaming FastAPI response
+      ↓
+Evaluation
+      ↓
+OpenTelemetry tracing
 ```
 
-The project is currently in the **evaluation and production-hardening stage**, rather than the initial implementation stage.
+The project has moved beyond the initial implementation stage and is currently focused on **evaluation, correctness, and production hardening**.
+
+The next improvements should prioritize measurable reliability and operational value rather than adding architectural complexity.
