@@ -38,6 +38,12 @@ class FakeRAGService:
         yield RAGEvent(type="text", text="FastAPI")
         yield RAGEvent(type="text", text=" is a web framework.")
 
+        yield RAGEvent(
+            type="complete",
+            retrieval_time_ms=100.0,
+            total_time_ms=500.0,
+        )
+
 
 @pytest.fixture
 def fake_rag_service() -> FakeRAGService:
@@ -58,7 +64,6 @@ def test_query_endpoint_streams_rag_response(
     client: TestClient,
     fake_rag_service: FakeRAGService,
 ) -> None:
-
     response = client.post(
         "/query",
         json={
@@ -85,6 +90,11 @@ def test_query_endpoint_streams_rag_response(
                     "score": 0.95,
                 }
             ],
+        },
+        {
+            "type": "complete",
+            "retrieval_time_ms": 100.0,
+            "total_time_ms": 500.0,
         },
         {
             "type": "text",

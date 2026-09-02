@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
+    deepseek_timeout: float = 60.0
 
     model_config = SettingsConfigDict(
         env_file=".env",

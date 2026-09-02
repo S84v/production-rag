@@ -10,7 +10,9 @@ class LLMService:
         settings = get_settings()
 
         self.client = client or AsyncOpenAI(
-            api_key=settings.deepseek_api_key, base_url=settings.deepseek_base_url
+            api_key=settings.deepseek_api_key,
+            base_url=settings.deepseek_base_url,
+            timeout=settings.deepseek_timeout,
         )
         self.model = settings.deepseek_model
 
@@ -31,3 +33,6 @@ class LLMService:
         async for event in stream:
             if event.type == "response.output_text.delta":
                 yield event.delta
+
+    async def close(self) -> None:
+        await self.client.close()

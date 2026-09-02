@@ -49,3 +49,6 @@ class QdrantVectorStore:
         )
 
         return [(UUID(str(point.id)), point.score) for point in response.points]
+
+    async def close(self) -> None:
+        await self.client.close()

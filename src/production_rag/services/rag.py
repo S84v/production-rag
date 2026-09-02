@@ -110,3 +110,7 @@ class RAGService:
                 type="complete",
                 total_time_ms=total_time_ms,
             )
+
+    async def close(self) -> None:
+        await self.llm_service.close()
+        await self.retrieval_service.vector_store.close()
