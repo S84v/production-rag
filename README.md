@@ -873,10 +873,6 @@ Currently avoided:
 
 Redis is present in Docker Compose but is not currently used by the RAG request path.
 
-The guiding principle is:
-
-> Add complexity when a measurable requirement justifies it, not simply to make the architecture look more "production."
-
 ---
 
 ## Current status
