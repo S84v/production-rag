@@ -1,6 +1,6 @@
 # Production RAG
 
-![Production RAG frontend](docs/images/frontend.png)
+<!--![Production RAG frontend](docs/images/frontend.png)-->
 ![Production RAG streaming](docs/images/streaming.gif)
 
 A production-oriented Retrieval-Augmented Generation (RAG) system built with FastAPI, PostgreSQL, Qdrant, Sentence Transformers, and DeepSeek.
