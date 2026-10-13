@@ -11,8 +11,13 @@ from production_rag.services.rag import RAGEvent, RAGSource
 
 
 class FakeRAGService:
-    def __init__(self, existing_collections: tuple[str, ...] = ("fastapi",)) -> None:
+    def __init__(
+        self,
+        existing_collections: tuple[str, ...] = ("fastapi",),
+        emit_error: bool = False,
+    ) -> None:
         self.existing_collections = set(existing_collections)
+        self.emit_error = emit_error
         self.calls = []
         self.exists_calls = []
 
@@ -44,6 +49,15 @@ class FakeRAGService:
         )
 
         yield RAGEvent(type="text", text="FastAPI")
+
+        if self.emit_error:
+            yield RAGEvent(
+                type="error",
+                error_code="generation_failed",
+                error_message="The answer could not be generated. Please try again.",
+            )
+            return
+
         yield RAGEvent(type="text", text=" is a web framework.")
 
         yield RAGEvent(
@@ -279,3 +293,27 @@ def test_query_endpoint_rejects_empty_collection(
     assert response.status_code == 422
     assert fake_rag_service.exists_calls == []
     assert fake_rag_service.calls == []
+
+
+def test_query_endpoint_streams_error_event_without_completion(
+    client: TestClient,
+    fake_rag_service: FakeRAGService,
+) -> None:
+    fake_rag_service.emit_error = True
+
+    response = client.post(
+        "/query",
+        json={"query": "What is FastAPI?", "collection": "fastapi"},
+    )
+
+    assert response.status_code == 200
+
+    events = [json.loads(line) for line in response.text.splitlines()]
+
+    assert events[-1] == {
+        "type": "error",
+        "code": "generation_failed",
+        "message": "The answer could not be generated. Please try again.",
+    }
+    # A failed generation must not emit a completion event.
+    assert all(event["type"] != "complete" for event in events)

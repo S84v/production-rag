@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from production_rag.services.llm import GenerationError
 from production_rag.services.rag import RAGEvent, RAGService, RAGSource
 
 
@@ -25,6 +26,18 @@ class FakeLLMService:
 
         for chunk in self.chunks:
             yield chunk
+
+
+class FakeFailingLLMService:
+    def __init__(self, chunks: list[str], error: GenerationError) -> None:
+        self.chunks = chunks
+        self.error = error
+
+    async def generate(self, **kwargs):
+        for chunk in self.chunks:
+            yield chunk
+
+        raise self.error
 
 
 @pytest.mark.asyncio
@@ -170,3 +183,51 @@ async def test_rag_service_handles_no_retrieved_context():
     assert llm_service.calls[0]["prompt"] == (
         "Question:\nWhat is FastAPI?\n\nRetrieved context:\n"
     )
+
+
+@pytest.mark.asyncio
+async def test_rag_service_emits_error_event_and_no_completion():
+    retrieval_service = FakeRetrievalService(
+        [
+            SimpleNamespace(
+                chunk=SimpleNamespace(
+                    id="00000000-0000-0000-0000-000000000001",
+                    content="FastAPI is a Python web framework.",
+                    chunk_index=0,
+                ),
+                source="fastapi",
+                source_uri="docs/index.md",
+                score=0.95,
+            )
+        ]
+    )
+
+    llm_service = FakeFailingLLMService(
+        ["partial"],
+        GenerationError(
+            code="generation_failed",
+            message="The answer could not be generated. Please try again.",
+        ),
+    )
+
+    service = RAGService(retrieval_service=retrieval_service, llm_service=llm_service)
+
+    events = [
+        event
+        async for event in service.generate(
+            query="What is FastAPI?", collection_name="fastapi", limit=1
+        )
+    ]
+
+    assert events[0].type == "sources"
+    assert [event.text for event in events if event.type == "text"] == ["partial"]
+
+    assert events[-1].type == "error"
+    assert events[-1].error_code == "generation_failed"
+    assert (
+        events[-1].error_message
+        == "The answer could not be generated. Please try again."
+    )
+
+    # A failed generation must never look like a successful completion.
+    assert all(event.type != "complete" for event in events)

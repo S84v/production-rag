@@ -79,6 +79,15 @@ async def query(
 
                 yield json.dumps(payload) + "\n"
 
+            elif event.type == "error":
+                payload: dict[str, object] = {
+                    "type": "error",
+                    "code": event.error_code,
+                    "message": event.error_message,
+                }
+
+                yield json.dumps(payload) + "\n"
+
     return StreamingResponse(
         stream_response(),
         media_type="application/x-ndjson",

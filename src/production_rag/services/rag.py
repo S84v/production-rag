@@ -2,7 +2,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
-from production_rag.services.llm import LLMService
+from production_rag.services.llm import GenerationError, LLMService
 from production_rag.services.retrieval import RetrievalService
 from production_rag.telemetry import get_tracer
 
@@ -24,6 +24,8 @@ class RAGEvent:
     sources: list[RAGSource] | None = None
     retrieval_time_ms: float | None = None
     total_time_ms: float | None = None
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 tracer = get_tracer()
@@ -99,11 +101,22 @@ class RAGService:
                 "Do not invent facts."
             )
 
-            async for text in self.llm_service.generate(
-                prompt=prompt,
-                instructions=instructions,
-            ):
-                yield RAGEvent(type="text", text=text)
+            try:
+                async for text in self.llm_service.generate(
+                    prompt=prompt,
+                    instructions=instructions,
+                ):
+                    yield RAGEvent(type="text", text=text)
+            except GenerationError as error:
+                span.set_attribute("rag.error_code", error.code)
+
+                yield RAGEvent(
+                    type="error",
+                    error_code=error.code,
+                    error_message=error.message,
+                )
+
+                return
 
             total_time_ms = (time.perf_counter() - total_start) * 1000
 

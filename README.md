@@ -304,16 +304,17 @@ The stream contains structured events for:
 * retrieved sources
 * generated text
 * completion/timing information
+* terminal errors (a failed or incomplete generation)
 
 A response is conceptually structured as:
 
 ```json
 {"type":"sources","sources":[...]}
-{"type":"complete","retrieval_time_ms":...,"total_time_ms":...}
 {"type":"text","text":"..."}
+{"type":"complete","retrieval_time_ms":...,"total_time_ms":...}
 ```
 
-The generated text is accumulated by the API and emitted as a final `text` event.
+The stream begins with a `sources` event, followed by zero or more incremental `text` events. It ends with exactly one terminal event: `complete` on success, or `error` on a failed or incomplete generation, for example `{"type":"error","code":"generation_failed","message":"..."}`. Provider error details are never included in the response.
 
 ---
 

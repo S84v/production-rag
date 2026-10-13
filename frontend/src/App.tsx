@@ -50,6 +50,8 @@ function App() {
             } else if (event.type === "complete") {
               setRetrievalTime(event.retrieval_time_ms);
               setTotalTime(event.total_time_ms);
+            } else if (event.type === "error") {
+              setError(event.message);
             }
           },
         },

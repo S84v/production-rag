@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from production_rag.services.llm import LLMService
+from production_rag.services.llm import GenerationError, LLMService
 
 
 class FakeResponses:
@@ -65,7 +65,7 @@ async def test_generate_yields_streamed_text():
 
 @pytest.mark.asyncio
 async def test_generate_configures_streaming_and_disables_reasoning():
-    client = FakeClient([])
+    client = FakeClient([SimpleNamespace(type="response.completed")])
     service = LLMService(client=client)
 
     chunks = [
@@ -87,3 +87,71 @@ async def test_generate_configures_streaming_and_disables_reasoning():
             "stream": True,
         }
     ]
+
+
+async def collect_until_error(service: LLMService) -> tuple[list[str], GenerationError]:
+    chunks: list[str] = []
+
+    with pytest.raises(GenerationError) as excinfo:
+        async for chunk in service.generate(prompt="q", instructions="i"):
+            chunks.append(chunk)
+
+    return chunks, excinfo.value
+
+
+@pytest.mark.asyncio
+async def test_generate_raises_on_failed_response():
+    secret = "provider-internal-detail: quota exceeded"
+    events = [
+        SimpleNamespace(type="response.output_text.delta", delta="partial"),
+        SimpleNamespace(
+            type="response.failed",
+            response=SimpleNamespace(
+                status="failed",
+                error=SimpleNamespace(message=secret),
+            ),
+        ),
+    ]
+    service = LLMService(client=FakeClient(events))
+
+    chunks, error = await collect_until_error(service)
+
+    assert chunks == ["partial"]
+    assert error.code == "generation_failed"
+    assert error.message == "The answer could not be generated. Please try again."
+    assert secret not in str(error)
+    assert secret not in error.message
+
+
+@pytest.mark.asyncio
+async def test_generate_raises_on_incomplete_response():
+    events = [
+        SimpleNamespace(type="response.output_text.delta", delta="partial"),
+        SimpleNamespace(
+            type="response.incomplete",
+            response=SimpleNamespace(
+                status="incomplete",
+                incomplete_details=SimpleNamespace(reason="max_output_tokens"),
+            ),
+        ),
+    ]
+    service = LLMService(client=FakeClient(events))
+
+    chunks, error = await collect_until_error(service)
+
+    assert chunks == ["partial"]
+    assert error.code == "generation_incomplete"
+    assert error.message == "The answer was incomplete. Please try again."
+
+
+@pytest.mark.asyncio
+async def test_generate_raises_when_stream_ends_without_completion():
+    events = [
+        SimpleNamespace(type="response.output_text.delta", delta="partial"),
+    ]
+    service = LLMService(client=FakeClient(events))
+
+    chunks, error = await collect_until_error(service)
+
+    assert chunks == ["partial"]
+    assert error.code == "generation_incomplete"

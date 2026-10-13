@@ -22,7 +22,13 @@ export type CompleteEvent = {
     total_time_ms: number;
 };
 
-export type QueryEvent = SourcesEvent | TextEvent | CompleteEvent;
+export type ErrorEvent = {
+    type: "error";
+    code: string;
+    message: string;
+};
+
+export type QueryEvent = SourcesEvent | TextEvent | CompleteEvent | ErrorEvent;
 
 export type QueryRequest = {
     query: string;
@@ -68,6 +74,15 @@ export async function streamQuery(
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let completed = false;
+
+    const handleEvent = (event: QueryEvent): void => {
+        if (event.type === "complete" || event.type === "error") {
+            completed = true;
+        }
+
+        callbacks.onEvent(event);
+    };
 
     try {
         while (true) {
@@ -76,8 +91,9 @@ export async function streamQuery(
             if (done) {
                 buffer += decoder.decode();
 
-                if (buffer.trim()) {
-                    processLine(buffer, callbacks);
+                const finalEvent = parseLine(buffer);
+                if (finalEvent) {
+                    handleEvent(finalEvent);
                 }
 
                 break;
@@ -89,21 +105,27 @@ export async function streamQuery(
             buffer = lines.pop() ?? "";
 
             for (const line of lines) {
-                processLine(line, callbacks);
+                const event = parseLine(line);
+                if (event) {
+                    handleEvent(event);
+                }
             }
+        }
+
+        if (!completed) {
+            throw new Error("The answer stream ended unexpectedly.");
         }
     } finally {
         reader.releaseLock();
     }
 }
 
-function processLine(line: string, callbacks: QueryCallbacks): void {
+function parseLine(line: string): QueryEvent | null {
     const trimmed = line.trim();
 
     if (!trimmed) {
-        return;
+        return null;
     }
 
-    const event = JSON.parse(trimmed) as QueryEvent;
-    callbacks.onEvent(event);
+    return JSON.parse(trimmed) as QueryEvent;
 }
