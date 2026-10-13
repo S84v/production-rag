@@ -581,13 +581,25 @@ The dataset contains:
 
 The current retrieval evaluation is **chunk-level**.
 
-Each evaluation example contains a set of relevant chunk IDs:
+Each evaluation example lists one or more **content anchors** under
+`relevant_chunks`:
 
-```text
-relevant_chunks
+```json
+{ "source_uri": "filesystem://path-params.md", "snippet": "<verbatim excerpt>" }
 ```
 
-Retrieved chunks are compared against those labeled relevant chunks.
+Anchors are resolved to the current chunk IDs at evaluation time by matching the
+whitespace-normalized snippet against chunks from the same `source_uri`. Because
+labels reference content rather than runtime `uuid4` chunk IDs (or the
+`chunk_index`, which shifts on re-chunking), the dataset is reproducible across
+clean ingestion and corpus/chunking changes.
+
+Resolution targets the latest document version of each document. A snippet that
+matches **no** current chunk (missing) or **more than one** chunk (ambiguous)
+raises an actionable error naming the example and anchor instead of silently
+dropping a label or choosing an arbitrary match.
+
+Retrieved chunks are compared against the resolved relevant chunk IDs.
 
 The evaluation reports:
 
@@ -607,6 +619,10 @@ MRR
 
 ### Current retrieval baseline
 
+The metrics below are a **legacy, non-reproducible baseline** produced with the
+original UUID-based labels. They are preserved for historical reference only and
+must not be compared against results from the anchor-based dataset.
+
 |  K | Precision@K Chunks | Recall@K Chunks | Hit@K Chunks |    MRR |
 | -: | -----------------: | --------------: | -----------: | -----: |
 |  1 |             0.4167 |          0.3264 |       0.4167 | 0.4167 |
@@ -615,7 +631,11 @@ MRR
 | 10 |             0.0833 |          0.6250 |       0.7083 | 0.4889 |
 | 20 |             0.0521 |          0.7569 |       0.8333 | 0.4991 |
 
-The baseline is documented in:
+A fresh anchor-based baseline is **pending**: it must be recorded after a real
+evaluation run against a live PostgreSQL + Qdrant build, versioned by date and
+configuration.
+
+The baseline and labeling methodology are documented in:
 
 ```text
 docs/evaluation/retrieval_baseline.md
@@ -682,6 +702,38 @@ Ruff line length: 88
 pytest asyncio mode: auto
 ```
 
+Tests that require live PostgreSQL, Qdrant, or the embedding model cache are
+marked `integration` and excluded by default in CI:
+
+```bash
+uv run pytest -m "not integration"
+```
+
+Run them explicitly once the required services are available:
+
+```bash
+uv run pytest -m integration
+```
+
+Prerequisites depend on the test:
+
+* PostgreSQL must be available for the database, model, repository, retrieval,
+  and service integration tests.
+* Qdrant must be available for the retrieval and Qdrant integration tests.
+* Tests that compute real embeddings use the configured model
+  (`BAAI/bge-small-en-v1.5`), which is loaded with `local_files_only=True`, so
+  the model must already be cached locally; the tests do not download it.
+
+PostgreSQL and Qdrant are provided by Docker Compose.
+
+The chunker and anchor-resolution regression tests read the pinned corpus from
+`data/raw/fastapi/`, which is not tracked in Git. Acquire it reproducibly before
+running those tests:
+
+```bash
+./scripts/acquire_corpus.sh
+```
+
 The test suite covers the major vertical slices of the application, including:
 
 * application configuration
@@ -700,6 +752,17 @@ The test suite covers the major vertical slices of the application, including:
 * collection validation
 * application lifecycle
 * evaluation logic
+
+---
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on pushes to `main` and on pull requests:
+
+* **backend** — `uv sync --frozen`, `ruff check`, `ruff format --check`, acquisition of the pinned corpus, then `pytest -m "not integration"` (service-free tests only).
+* **frontend** — `npm ci`, `npm run lint`, `npm run build`.
+
+CI uses the pinned `uv` version and does not require PostgreSQL, Qdrant, cloud credentials, or paid API calls.
 
 ---
 

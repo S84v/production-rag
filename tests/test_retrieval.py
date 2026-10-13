@@ -9,6 +9,8 @@ from production_rag.services.document_ingestion import DocumentIngestionService
 from production_rag.services.embedding import EmbeddingService
 from production_rag.services.retrieval import RetrievalService
 
+pytestmark = pytest.mark.integration
+
 
 async def create_test_collection() -> Collection:
     async with async_session_factory() as session, session.begin():

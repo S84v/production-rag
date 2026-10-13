@@ -14,6 +14,8 @@ from production_rag.services.embedding import EmbeddingService
 from production_rag.services.qdrant import QdrantVectorStore
 from tests.helpers.qdrant import FakeQdrantClient
 
+pytestmark = pytest.mark.integration
+
 
 class FakeEmbeddingEncoder:
     def encode(self, text: str) -> list[float]:

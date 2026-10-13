@@ -10,6 +10,8 @@ from production_rag.repositories.document import DocumentRepository
 from production_rag.repositories.document_version import DocumentVersionRepository
 from production_rag.repositories.embedding import EmbeddingRepository
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_document_repository_find_and_create_by_identity():

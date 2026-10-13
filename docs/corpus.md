@@ -81,4 +81,24 @@ The selected files are copied into:
 data/raw/fastapi/
 ```
 
+For a one-command, reproducible acquisition of exactly these 16 files, run:
+
+```bash
+./scripts/acquire_corpus.sh
+```
+
+The script downloads the pinned revision from the official upstream raw-file URLs
+and writes them under `data/raw/fastapi/`. It is idempotent and fails on any HTTP
+error, so a missing or moved file cannot be silently skipped.
+
 The raw and processed corpus directories are intentionally excluded from Git.
+
+### Evaluation labels
+
+Retrieval evaluation labels reference this corpus by content, not by database
+identifier. Each label anchors a `source_uri` relative to
+`data/raw/fastapi/` (for example `filesystem://path-params.md`) to a verbatim
+snippet. Changing the pinned revision or the selected documents can invalidate
+anchors; the anchor resolution check over the local corpus (see
+`tests/test_anchors.py`) is expected to be re-run after any corpus change, and a
+new baseline recorded rather than overwriting the previous one.

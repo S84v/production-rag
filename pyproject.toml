@@ -68,3 +68,7 @@ docstring-code-format = true
 pythonpath = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "integration: tests that require external services (PostgreSQL, Qdrant, or model/API access)",
+]

@@ -5,6 +5,8 @@ from qdrant_client import AsyncQdrantClient
 
 from production_rag.services.qdrant import QdrantVectorStore
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_qdrant_vector_store_persists_and_queries_point():

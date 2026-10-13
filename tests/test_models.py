@@ -1,7 +1,10 @@
+import pytest
 from sqlalchemy import select
 
 from production_rag.db.session import async_session_factory
 from production_rag.models.collection import Collection
+
+pytestmark = pytest.mark.integration
 
 
 async def test_create_and_read_collection():

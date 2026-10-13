@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from production_rag.db.session import async_session_factory
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_database_connection():
