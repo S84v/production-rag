@@ -331,8 +331,11 @@ Current behavior includes:
 | Missing required field        | `422`                    |
 | Malformed JSON                | `422`                    |
 | Nonexistent Qdrant collection | `404`                    |
+| Disallowed collection         | `404`                    |
 
 Collection existence is checked before the `StreamingResponse` is created. This prevents an invalid collection from producing a broken streaming response.
+
+The public API only serves collections on a fixed allowlist (`ALLOWED_COLLECTIONS`, default `fastapi`). The allowlist is checked before any Qdrant lookup, and disallowed and nonexistent collections both return the identical `404` message so the API does not reveal which collections exist.
 
 ---
 
@@ -417,6 +420,8 @@ Qdrant     → localhost:6333
 ```
 
 The DeepSeek API key should be configured locally.
+
+The public API only serves collections listed in `ALLOWED_COLLECTIONS` (comma-separated, default `fastapi`). Requests for any other collection return `404`, whether or not the collection exists in Qdrant. An explicitly empty value denies all collections.
 
 Do not commit API keys or other secrets to the repository.
 
@@ -790,7 +795,8 @@ production-rag/
 │   │   ├── 001-multi-collection-workspaces.md
 │   │   ├── 002-embeddings-as-separate-domain-entity.md
 │   │   ├── 003-structure-aware-markdown-ingestion.md
-│   │   └── 004-selective-use-of-langchain.md
+│   │   ├── 004-selective-use-of-langchain.md
+│   │   └── 005-public-api-collection-allowlist.md
 │   ├── evaluation/
 │   │   ├── generation_results.md
 │   │   └── retrieval_baseline.md

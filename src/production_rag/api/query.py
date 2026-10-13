@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from production_rag.core.settings import Settings, get_settings
 from production_rag.schemas.query import QueryRequest
 from production_rag.services.rag import RAGService
 
@@ -15,16 +16,27 @@ def get_rag_service(request: Request) -> RAGService:
     return request.app.state.rag_service
 
 
+def _collection_not_found(collection: str) -> HTTPException:
+    # Shared detail for disallowed and nonexistent collections so the response
+    # does not reveal whether a collection exists.
+    return HTTPException(
+        status_code=404,
+        detail=f"Collection '{collection}' not found",
+    )
+
+
 @router.post("/query")
 async def query(
     request: QueryRequest,
     rag_service: Annotated[RAGService, Depends(get_rag_service)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> StreamingResponse:
+    # Reject collections outside the allowlist before any Qdrant lookup.
+    if request.collection not in settings.allowed_collection_names:
+        raise _collection_not_found(request.collection)
+
     if not await rag_service.collection_exists(request.collection):
-        raise HTTPException(
-            status_code=404,
-            detail=f"Collection '{request.collection}' not found",
-        )
+        raise _collection_not_found(request.collection)
 
     async def stream_response() -> AsyncIterator[str]:
 

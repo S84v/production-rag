@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = False
 
+    # Comma-separated collections the public API is allowed to query.
+    allowed_collections: str = "fastapi"
+
     postgres_user: str = "production_rag"
     postgres_password: str = "production_rag_dev"
     postgres_db: str = "production_rag"
@@ -27,6 +30,12 @@ class Settings(BaseSettings):
         env_file_encoding="utf_8",
         extra="ignore",
     )
+
+    @property
+    def allowed_collection_names(self) -> frozenset[str]:
+        return frozenset(
+            name.strip() for name in self.allowed_collections.split(",") if name.strip()
+        )
 
 
 @lru_cache

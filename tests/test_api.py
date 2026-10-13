@@ -5,16 +5,20 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from production_rag.api.query import get_rag_service
+from production_rag.core.settings import Settings, get_settings
 from production_rag.main import app
 from production_rag.services.rag import RAGEvent, RAGSource
 
 
 class FakeRAGService:
-    def __init__(self) -> None:
+    def __init__(self, existing_collections: tuple[str, ...] = ("fastapi",)) -> None:
+        self.existing_collections = set(existing_collections)
         self.calls = []
+        self.exists_calls = []
 
     async def collection_exists(self, collection_name: str) -> bool:
-        return collection_name == "fastapi"
+        self.exists_calls.append(collection_name)
+        return collection_name in self.existing_collections
 
     async def generate(self, query: str, collection_name: str, limit: int = 5):
         self.calls.append(
@@ -160,3 +164,42 @@ def test_query_endpoint_rejects_nonexistent_collection(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Collection 'does-not-exist' not found"}
+
+
+def test_query_endpoint_rejects_disallowed_collection_before_existence_check(
+    client: TestClient,
+    fake_rag_service: FakeRAGService,
+) -> None:
+    # The backend knows this collection, but it is not on the API allowlist.
+    fake_rag_service.existing_collections.add("internal")
+
+    response = client.post(
+        "/query",
+        json={"query": "What is FastAPI?", "collection": "internal"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Collection 'internal' not found"}
+    # Enforced before any Qdrant existence check or generation.
+    assert fake_rag_service.exists_calls == []
+    assert fake_rag_service.calls == []
+
+
+def test_query_endpoint_rejects_allowed_but_nonexistent_collection(
+    client: TestClient,
+    fake_rag_service: FakeRAGService,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        allowed_collections="fastapi,missing"
+    )
+
+    response = client.post(
+        "/query",
+        json={"query": "What is FastAPI?", "collection": "missing"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Collection 'missing' not found"}
+    # An allowed collection reaches the existence check.
+    assert fake_rag_service.exists_calls == ["missing"]
+    assert fake_rag_service.calls == []
