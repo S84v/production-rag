@@ -3,7 +3,13 @@ import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
+from production_rag.db.session import async_session_factory
+from production_rag.evaluation.anchors import (
+    ChunkRecord,
+    resolve_example_relevant_chunk_ids,
+)
 from production_rag.evaluation.dataset import EvaluationExample, load_dataset
+from production_rag.repositories.retrieval import RetrievalRepository
 from production_rag.services.retrieval import RetrievalService
 
 
@@ -19,7 +25,7 @@ class RetrievedChunk:
 class RetrievalEvaluationResult:
     example_id: str
     retrieved_chunks: tuple[RetrievedChunk, ...]
-    relevant_chunks: frozenset[str]
+    relevant_chunk_ids: frozenset[str]
     precision: float
     recall: float
     reciprocal_rank: float
@@ -36,10 +42,11 @@ class RetrievalEvaluationSummary:
 
 
 def evaluate_example(
-    example: EvaluationExample,
+    example_id: str,
+    relevant_chunk_ids: frozenset[str],
     retrieved_chunks: list[RetrievedChunk],
 ) -> RetrievalEvaluationResult:
-    relevant = example.relevant_chunks
+    relevant = relevant_chunk_ids
     retrieved_ids = [chunk.chunk_id for chunk in retrieved_chunks]
 
     relevant_retrieved = sum(chunk_id in relevant for chunk_id in retrieved_ids)
@@ -58,9 +65,9 @@ def evaluate_example(
     hit = 1.0 if relevant_retrieved > 0 else 0.0
 
     return RetrievalEvaluationResult(
-        example_id=example.id,
+        example_id=example_id,
         retrieved_chunks=tuple(retrieved_chunks),
-        relevant_chunks=relevant,
+        relevant_chunk_ids=relevant,
         precision=precision,
         recall=recall,
         reciprocal_rank=reciprocal_rank,
@@ -85,16 +92,34 @@ def summarize(
     )
 
 
+async def load_collection_chunk_records(collection_name: str) -> list[ChunkRecord]:
+    async with async_session_factory() as session:
+        repository = RetrievalRepository(session)
+        rows = await repository.list_collection_chunks(collection_name)
+
+    return [
+        ChunkRecord(chunk_id=str(chunk_id), source_uri=source_uri, content=content)
+        for chunk_id, source_uri, content in rows
+    ]
+
+
 async def evaluate(
     examples: list[EvaluationExample],
     collection_name: str,
     limit: int,
 ) -> RetrievalEvaluationSummary:
+    chunk_records = await load_collection_chunk_records(collection_name)
+
     retrieval_service = RetrievalService()
 
     results: list[RetrievalEvaluationResult] = []
 
     for example in examples:
+        relevant_chunk_ids = resolve_example_relevant_chunk_ids(
+            example,
+            chunk_records,
+        )
+
         retrieved = await retrieval_service.retrieve(
             query=example.question,
             collection_name=collection_name,
@@ -113,7 +138,8 @@ async def evaluate(
 
         results.append(
             evaluate_example(
-                example=example,
+                example_id=example.id,
+                relevant_chunk_ids=relevant_chunk_ids,
                 retrieved_chunks=retrieved_chunks,
             )
         )
@@ -158,7 +184,7 @@ def print_summary(
                     f"score={chunk.score:.4f}"
                 )
 
-            print(f"Relevant chunk UUIDs: {list(result.relevant_chunks)}")
+            print(f"Relevant chunk IDs: {sorted(result.relevant_chunk_ids)}")
 
 
 def parse_args() -> argparse.Namespace:

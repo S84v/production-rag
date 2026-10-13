@@ -131,6 +131,11 @@ Update the relevant README, ADR, corpus, evaluation, or operational docs in the
 same change whenever behavior, configuration, or architecture changes. Record
 lasting architectural decisions as new ADRs; do not rewrite accepted ones.
 
+## Code style
+
+Use comments where they clarify non-obvious behavior, invariants, or design
+trade-offs; avoid comments that merely restate the code.
+
 ## MCP tools (when available)
 
 Verify availability and permissions in the active session; a tool's presence is
