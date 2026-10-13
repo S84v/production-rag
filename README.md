@@ -328,6 +328,8 @@ Current behavior includes:
 | Valid query                   | `200` streaming response |
 | Empty query                   | `422`                    |
 | Invalid limit                 | `422`                    |
+| Query exceeds 2000 chars      | `422`                    |
+| Collection exceeds 128 chars  | `422`                    |
 | Missing required field        | `422`                    |
 | Malformed JSON                | `422`                    |
 | Nonexistent Qdrant collection | `404`                    |
@@ -336,6 +338,8 @@ Current behavior includes:
 Collection existence is checked before the `StreamingResponse` is created. This prevents an invalid collection from producing a broken streaming response.
 
 The public API only serves collections on a fixed allowlist (`ALLOWED_COLLECTIONS`, default `fastapi`). The allowlist is checked before any Qdrant lookup, and disallowed and nonexistent collections both return the identical `404` message so the API does not reveal which collections exist.
+
+Field length limits are enforced by the request schema: `query` is capped at 2000 characters and `collection` at 128 characters. Oversized values are rejected with `422` before any collection lookup or generation.
 
 ---
 

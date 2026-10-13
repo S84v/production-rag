@@ -203,3 +203,79 @@ def test_query_endpoint_rejects_allowed_but_nonexistent_collection(
     # An allowed collection reaches the existence check.
     assert fake_rag_service.exists_calls == ["missing"]
     assert fake_rag_service.calls == []
+
+
+def test_query_endpoint_rejects_oversized_query(
+    client: TestClient,
+    fake_rag_service: FakeRAGService,
+) -> None:
+    response = client.post(
+        "/query",
+        json={"query": "a" * 2001, "collection": "fastapi"},
+    )
+
+    assert response.status_code == 422
+    assert fake_rag_service.exists_calls == []
+    assert fake_rag_service.calls == []
+
+
+def test_query_endpoint_rejects_oversized_collection(
+    client: TestClient,
+    fake_rag_service: FakeRAGService,
+) -> None:
+    response = client.post(
+        "/query",
+        json={"query": "What is FastAPI?", "collection": "a" * 129},
+    )
+
+    assert response.status_code == 422
+    assert fake_rag_service.exists_calls == []
+    assert fake_rag_service.calls == []
+
+
+def test_query_endpoint_accepts_query_at_max_length(
+    client: TestClient,
+    fake_rag_service: FakeRAGService,
+) -> None:
+    query = "a" * 2000
+
+    response = client.post(
+        "/query",
+        json={"query": query, "collection": "fastapi"},
+    )
+
+    assert response.status_code == 200
+    assert fake_rag_service.calls[0]["query"] == query
+
+
+def test_query_endpoint_accepts_collection_at_max_length(
+    client: TestClient,
+    fake_rag_service: FakeRAGService,
+) -> None:
+    collection = "a" * 128
+    fake_rag_service.existing_collections.add(collection)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        allowed_collections=collection
+    )
+
+    response = client.post(
+        "/query",
+        json={"query": "What is FastAPI?", "collection": collection},
+    )
+
+    assert response.status_code == 200
+    assert fake_rag_service.exists_calls == [collection]
+
+
+def test_query_endpoint_rejects_empty_collection(
+    client: TestClient,
+    fake_rag_service: FakeRAGService,
+) -> None:
+    response = client.post(
+        "/query",
+        json={"query": "What is FastAPI?", "collection": ""},
+    )
+
+    assert response.status_code == 422
+    assert fake_rag_service.exists_calls == []
+    assert fake_rag_service.calls == []
