@@ -120,3 +120,36 @@ def test_embedding_model_revision_reads_environment(monkeypatch):
     settings = Settings(_env_file=None)
 
     assert settings.embedding_model_revision == revision
+
+
+def test_cors_allowed_origins_defaults_to_empty(monkeypatch):
+    monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.cors_allowed_origins == ""
+    assert settings.cors_allowed_origin_list == []
+
+
+def test_cors_allowed_origins_parses_comma_separated():
+    settings = Settings(
+        cors_allowed_origins=" https://a.example.com ,, https://b.example.com ,"
+    )
+
+    assert settings.cors_allowed_origin_list == [
+        "https://a.example.com",
+        "https://b.example.com",
+    ]
+
+
+def test_cors_allowed_origins_reads_environment(monkeypatch):
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.cors_allowed_origin_list == ["https://app.example.com"]
+
+
+def test_cors_allowed_origins_rejects_wildcard():
+    with pytest.raises(ValidationError):
+        Settings(cors_allowed_origins="https://app.example.com,*")

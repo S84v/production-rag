@@ -515,6 +515,17 @@ RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR       (default false)
 
 `RATE_LIMIT_REQUESTS` is the number of `POST /query` requests allowed per client per 60-second window and must be a positive integer. `RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR` controls client identification; leave it `false` unless you have verified the Cloud Run header chain (see [Rate limiting](#rate-limiting)).
 
+Cross-origin and frontend settings:
+
+```text
+CORS_ALLOWED_ORIGINS     # comma-separated exact browser origins; empty disables CORS
+VITE_API_BASE_URL        # frontend build-time API base URL (public)
+```
+
+`CORS_ALLOWED_ORIGINS` lists the browser origins allowed to call the API from a different origin. Each entry is an **exact** origin in the form `scheme://host[:port]` — no path and no trailing slash. There is no wildcard, substring, or regex matching, and `*` is rejected as a configuration error. An empty value (the local default) disables CORS entirely; local development uses the Vite proxy and is same-origin. CORS is **not authentication** and does not replace the API's abuse controls (request limits, collection allowlist, and rate limiting); it is enforced by the browser, not the server.
+
+`VITE_API_BASE_URL` is a **public frontend variable, never a secret**. When unset (the local default), the frontend calls the relative `/query` path, which the Vite dev server proxies to `http://localhost:8000`. Set it for a production build where the frontend and API are on different origins, for example `https://api.example.com`. Vite inlines `VITE_*` variables at **build time**, so the frontend must be rebuilt when the value changes.
+
 ---
 
 ### Start infrastructure

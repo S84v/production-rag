@@ -1,7 +1,11 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _split_origins(value: str) -> list[str]:
+    return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
 class Settings(BaseSettings):
@@ -11,6 +15,11 @@ class Settings(BaseSettings):
 
     # Comma-separated collections the public API is allowed to query.
     allowed_collections: str = "fastapi"
+
+    # Comma-separated browser origins allowed to call the API cross-origin.
+    # Empty disables CORS (the default; local development uses the Vite proxy).
+    # Origins are exact (scheme://host[:port]); '*' is not supported.
+    cors_allowed_origins: str = ""
 
     # Optional async PostgreSQL URL for a hosted database (e.g. Neon). When set
     # it takes precedence over the POSTGRES_* local defaults. The `postgres://`
@@ -65,6 +74,21 @@ class Settings(BaseSettings):
         return frozenset(
             name.strip() for name in self.allowed_collections.split(",") if name.strip()
         )
+
+    @field_validator("cors_allowed_origins")
+    @classmethod
+    def _reject_wildcard_origin(cls, value: str) -> str:
+        if "*" in _split_origins(value):
+            raise ValueError(
+                "CORS_ALLOWED_ORIGINS must not contain '*' (unrestricted origins "
+                "are not supported); configure exact origins instead."
+            )
+
+        return value
+
+    @property
+    def cors_allowed_origin_list(self) -> list[str]:
+        return _split_origins(self.cors_allowed_origins)
 
 
 @lru_cache

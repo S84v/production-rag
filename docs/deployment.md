@@ -11,8 +11,10 @@ not evidence.
   Sentence Transformers stay external).
 - No cloud resources, quotas, billing, permissions, or free-tier allowances are
   assumed or verified.
-- CORS is **not** configured yet; calling the backend from the Firebase-hosted
-  frontend is a separate task.
+- Cross-origin access is configurable via `CORS_ALLOWED_ORIGINS` (exact
+  origins; empty by default). CORS is not authentication and does not replace
+  the API's abuse controls. Building and serving the frontend (Firebase) and the
+  Cloud Run deployment remain separate, unverified tasks.
 
 ## Prerequisites
 
@@ -51,6 +53,21 @@ the image; `PORT` defaults to `8080`.
 
 Whenever `DATABASE_URL` is set, apply migrations separately (see below) — the
 application does not run migrations at startup.
+
+## Frontend and CORS
+
+The React frontend reads its API base URL from `VITE_API_BASE_URL`, a public
+**build-time** variable baked into the bundle (locally via `frontend/.env.local`,
+which is gitignored). When unset, the frontend calls the relative `/query` path
+handled by the Vite dev proxy. For a production cross-origin deployment, build
+the frontend with `VITE_API_BASE_URL` set to the backend origin, and list the
+frontend's origin in the backend's `CORS_ALLOWED_ORIGINS`.
+
+`CORS_ALLOWED_ORIGINS` accepts comma-separated **exact** origins
+(`scheme://host[:port]`, no path or trailing slash); `*` is rejected and there is
+no substring or regex matching. CORS is **not authentication** and is not a
+substitute for the request limits, collection allowlist, and rate limiting — it
+is enforced by the browser, not the server.
 
 ## Run locally
 

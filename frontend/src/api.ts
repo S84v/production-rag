@@ -36,6 +36,13 @@ export type QueryRequest = {
     limit: number;
 };
 
+// Public, build-time configuration (never a secret). Empty keeps the relative
+// path so the Vite development proxy continues to handle /query.
+const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? "").replace(
+    /\/+$/,
+    "",
+);
+
 type QueryCallbacks = {
     onEvent: (event: QueryEvent) => void;
 };
@@ -44,7 +51,7 @@ export async function streamQuery(
     request: QueryRequest,
     callbacks: QueryCallbacks,
 ): Promise<void> {
-    const response = await fetch("/query", {
+    const response = await fetch(`${API_BASE_URL}/query`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
