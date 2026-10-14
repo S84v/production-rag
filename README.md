@@ -428,6 +428,16 @@ Install dependencies:
 uv sync
 ```
 
+#### CPU-only PyTorch (optional)
+
+The project exposes a `cpu` extra that resolves PyTorch from the official CPU-only index (`https://download.pytorch.org/whl/cpu`) instead of the default PyPI build:
+
+```bash
+uv sync --extra cpu
+```
+
+Use it for CPU-only environments such as containers and CI (CI installs with `--extra cpu`). It pins the same PyTorch version as the default, but the installed wheel carries a `+cpu` local version and pulls no CUDA libraries, so it is not byte-for-byte identical to the default Linux wheel. A `gpu` extra is provided as the counterpart that keeps the default PyPI build; `cpu` and `gpu` are mutually exclusive, and a plain `uv sync` keeps the existing default PyPI selection.
+
 ---
 
 ### Environment configuration

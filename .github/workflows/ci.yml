@@ -16,8 +16,8 @@ jobs:
         with:
           version: "0.13.0"
 
-      - name: Install dependencies (locked)
-        run: uv sync --frozen
+      - name: Install dependencies (locked, CPU-only PyTorch)
+        run: uv sync --frozen --extra cpu
 
       - name: Ruff lint
         run: uv run ruff check .

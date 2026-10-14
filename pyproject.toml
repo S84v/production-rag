@@ -29,6 +29,15 @@ dependencies = [
 [project.scripts]
 production-rag = "production_rag:main"
 
+[project.optional-dependencies]
+# CPU-only PyTorch (no CUDA), resolved from the official PyTorch CPU index.
+# Selected by Docker and CI via `uv sync --extra cpu`; the installed wheel
+# carries a `+cpu` local version. `gpu` is a counterpart extra that keeps the
+# existing default (PyPI) build; it exists so `cpu` can be declared conflicting
+# and never affects a plain `uv sync`.
+cpu = ["torch==2.13.0"]
+gpu = ["torch==2.13.0"]
+
 [build-system]
 requires = ["uv_build>=0.12.2,<0.13.0"]
 build-backend = "uv_build"
@@ -41,6 +50,23 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.2",
 ]
+
+[tool.uv]
+# `cpu` and the default build are mutually exclusive, so the CPU extra never
+# affects a plain `uv sync`.
+conflicts = [[{ extra = "cpu" }, { extra = "gpu" }]]
+
+[tool.uv.sources]
+# `cpu` selects the CPU-only index; `gpu` (and a plain `uv sync`) use the
+# default index (PyPI).
+torch = [
+    { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.ruff]
 line-length = 88
