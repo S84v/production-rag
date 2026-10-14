@@ -231,3 +231,129 @@ async def test_rag_service_emits_error_event_and_no_completion():
 
     # A failed generation must never look like a successful completion.
     assert all(event.type != "complete" for event in events)
+
+
+def make_retrieved_result(
+    *,
+    chunk_id: str,
+    content: str,
+    chunk_index: int,
+    source_uri: str,
+    score: float = 0.9,
+):
+    return SimpleNamespace(
+        chunk=SimpleNamespace(
+            id=chunk_id,
+            content=content,
+            chunk_index=chunk_index,
+        ),
+        source="fastapi",
+        source_uri=source_uri,
+        score=score,
+    )
+
+
+@pytest.mark.asyncio
+async def test_rag_service_bounds_context_and_aligns_sources():
+    retrieval_service = FakeRetrievalService(
+        [
+            make_retrieved_result(
+                chunk_id="c1", content="alpha", chunk_index=0, source_uri="a.md"
+            ),
+            make_retrieved_result(
+                chunk_id="c2", content="beta", chunk_index=1, source_uri="b.md"
+            ),
+            make_retrieved_result(
+                chunk_id="c3", content="gamma", chunk_index=2, source_uri="c.md"
+            ),
+        ]
+    )
+    llm_service = FakeLLMService(["ok"])
+
+    service = RAGService(
+        retrieval_service=retrieval_service,
+        llm_service=llm_service,
+        max_context_characters=9,
+    )
+
+    events = [
+        event async for event in service.generate(query="q", collection_name="fastapi")
+    ]
+
+    # "alpha" (5) + "beta" (4) == 9; "gamma" would exceed the budget and is
+    # excluded from both the sources event and the prompt.
+    assert [source.source_uri for source in events[0].sources] == ["a.md", "b.md"]
+
+    assert llm_service.calls[0]["prompt"] == (
+        "Question:\nq\n\nRetrieved context:\n[Source 1]\nalpha\n\n[Source 2]\nbeta"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rag_service_context_budget_boundary_is_strict():
+    results = [
+        make_retrieved_result(
+            chunk_id="c1", content="alpha", chunk_index=0, source_uri="a.md"
+        ),
+        make_retrieved_result(
+            chunk_id="c2", content="beta", chunk_index=1, source_uri="b.md"
+        ),
+    ]
+
+    # Exactly the combined size of both chunks includes both.
+    service = RAGService(
+        retrieval_service=FakeRetrievalService(results),
+        llm_service=FakeLLMService(["ok"]),
+        max_context_characters=9,
+    )
+    events = [
+        event async for event in service.generate(query="q", collection_name="fastapi")
+    ]
+    assert [source.source_uri for source in events[0].sources] == ["a.md", "b.md"]
+
+    # One character short includes only the first whole chunk.
+    service = RAGService(
+        retrieval_service=FakeRetrievalService(results),
+        llm_service=FakeLLMService(["ok"]),
+        max_context_characters=8,
+    )
+    events = [
+        event async for event in service.generate(query="q", collection_name="fastapi")
+    ]
+    assert [source.source_uri for source in events[0].sources] == ["a.md"]
+
+
+@pytest.mark.asyncio
+async def test_rag_service_context_selection_preserves_rank_and_stops():
+    retrieval_service = FakeRetrievalService(
+        [
+            make_retrieved_result(
+                chunk_id="c1", content="a" * 5, chunk_index=0, source_uri="a.md"
+            ),
+            make_retrieved_result(
+                chunk_id="c2", content="b" * 100, chunk_index=1, source_uri="b.md"
+            ),
+            make_retrieved_result(
+                chunk_id="c3", content="c" * 5, chunk_index=2, source_uri="c.md"
+            ),
+        ]
+    )
+    llm_service = FakeLLMService(["ok"])
+
+    service = RAGService(
+        retrieval_service=retrieval_service,
+        llm_service=llm_service,
+        max_context_characters=20,
+    )
+
+    events = [
+        event async for event in service.generate(query="q", collection_name="fastapi")
+    ]
+
+    # The second chunk does not fit, so selection stops; the smaller third
+    # chunk is never pulled forward (rank order is preserved).
+    assert [source.source_uri for source in events[0].sources] == ["a.md"]
+
+    prompt = llm_service.calls[0]["prompt"]
+    assert ("b" * 100) not in prompt
+    assert ("c" * 5) not in prompt

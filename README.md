@@ -342,6 +342,8 @@ The public API only serves collections on a fixed allowlist (`ALLOWED_COLLECTION
 
 Field length limits are enforced by the request schema: `query` is capped at 2000 characters and `collection` at 128 characters. Oversized values are rejected with `422` before any collection lookup or generation.
 
+The server also bounds cost independently of the client. Generated output is capped at `MAX_OUTPUT_TOKENS` tokens per answer (default 1024), and the retrieved context sent to the model is capped at `MAX_CONTEXT_CHARACTERS` characters (default 12000). Chunks are included as whole chunks in retrieval-rank order until the budget is reached. The `sources` event lists exactly the chunks that were included in the prompt, so unused chunks are never presented as supporting evidence.
+
 ---
 
 ### Application lifecycle management
@@ -381,6 +383,7 @@ The current RAG span records attributes including:
 * collection
 * retrieval limit
 * retrieved chunk count
+* context chunk count
 * retrieval latency
 * total RAG latency
 
@@ -444,6 +447,15 @@ The current default model configured by the application is:
 ```text
 deepseek-v4-flash
 ```
+
+Cost-control settings:
+
+```text
+MAX_OUTPUT_TOKENS      (default 1024)
+MAX_CONTEXT_CHARACTERS (default 12000)
+```
+
+`MAX_OUTPUT_TOKENS` bounds the number of tokens generated per answer and is passed to the DeepSeek Responses API as `max_output_tokens`. It also covers reasoning tokens, but reasoning is disabled, so it bounds the visible output. `MAX_CONTEXT_CHARACTERS` bounds the total length of the chunk content included in the retrieved context. Both must be positive integers.
 
 ---
 

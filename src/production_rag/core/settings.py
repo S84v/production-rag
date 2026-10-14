@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,10 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
     deepseek_timeout: float = 60.0
+
+    # Cost-control bounds for the public API. Both must be positive.
+    max_output_tokens: int = Field(default=1024, gt=0)
+    max_context_characters: int = Field(default=12000, gt=0)
 
     model_config = SettingsConfigDict(
         env_file=".env",

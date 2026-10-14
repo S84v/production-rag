@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from production_rag.core.settings import Settings
 
 
@@ -34,3 +37,33 @@ def test_allowed_collections_reads_environment(monkeypatch):
     settings = Settings()
 
     assert settings.allowed_collection_names == frozenset({"fastapi", "demo"})
+
+
+def test_cost_bounds_defaults(monkeypatch):
+    monkeypatch.delenv("MAX_OUTPUT_TOKENS", raising=False)
+    monkeypatch.delenv("MAX_CONTEXT_CHARACTERS", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.max_output_tokens == 1024
+    assert settings.max_context_characters == 12000
+
+
+def test_max_output_tokens_must_be_positive():
+    with pytest.raises(ValidationError):
+        Settings(max_output_tokens=0)
+
+
+def test_max_context_characters_must_be_positive():
+    with pytest.raises(ValidationError):
+        Settings(max_context_characters=0)
+
+
+def test_cost_bounds_read_environment(monkeypatch):
+    monkeypatch.setenv("MAX_OUTPUT_TOKENS", "512")
+    monkeypatch.setenv("MAX_CONTEXT_CHARACTERS", "8000")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.max_output_tokens == 512
+    assert settings.max_context_characters == 8000

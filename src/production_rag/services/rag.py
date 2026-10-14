@@ -2,6 +2,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
+from production_rag.core.settings import get_settings
 from production_rag.services.llm import GenerationError, LLMService
 from production_rag.services.retrieval import RetrievalService
 from production_rag.telemetry import get_tracer
@@ -31,14 +32,45 @@ class RAGEvent:
 tracer = get_tracer()
 
 
+def _within_context_budget(results: list, max_characters: int) -> list:
+    """Rank-preserving prefix of results whose combined content fits the budget.
+
+    Chunks are kept whole and in retrieval-rank order; the first chunk that
+    would exceed the remaining budget stops selection, so lower-ranked chunks
+    are never reordered or partially truncated. Only the returned chunks are
+    rendered into the prompt and reported in the ``sources`` event.
+    """
+    included: list = []
+    used = 0
+
+    for result in results:
+        size = len(result.chunk.content)
+
+        if used + size > max_characters:
+            break
+
+        included.append(result)
+        used += size
+
+    return included
+
+
 class RAGService:
     def __init__(
         self,
         retrieval_service: RetrievalService | None = None,
         llm_service: LLMService | None = None,
+        max_context_characters: int | None = None,
     ) -> None:
+        settings = get_settings()
+
         self.retrieval_service = retrieval_service or RetrievalService()
         self.llm_service = llm_service or LLMService()
+        self.max_context_characters = (
+            settings.max_context_characters
+            if max_context_characters is None
+            else max_context_characters
+        )
 
     async def collection_exists(self, collection_name: str) -> bool:
         return await self.retrieval_service.collection_exists(collection_name)
@@ -66,7 +98,10 @@ class RAGService:
 
             retrieval_time_ms = (time.perf_counter() - retrieval_start) * 1000
 
+            included = _within_context_budget(results, self.max_context_characters)
+
             span.set_attribute("rag.retrieved_chunks", len(results))
+            span.set_attribute("rag.context_chunks", len(included))
             span.set_attribute("rag.retrieval_time_ms", retrieval_time_ms)
 
             sources = [
@@ -78,7 +113,7 @@ class RAGService:
                     score=result.score,
                     content=result.chunk.content,
                 )
-                for result in results
+                for result in included
             ]
 
             yield RAGEvent(
@@ -89,7 +124,7 @@ class RAGService:
 
             context = "\n\n".join(
                 f"[Source {index}]\n{result.chunk.content}"
-                for index, result in enumerate(results, start=1)
+                for index, result in enumerate(included, start=1)
             )
 
             prompt = f"Question:\n{query}\n\nRetrieved context:\n{context}"

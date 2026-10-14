@@ -35,6 +35,7 @@ class LLMService:
             timeout=settings.deepseek_timeout,
         )
         self.model = settings.deepseek_model
+        self.max_output_tokens = settings.max_output_tokens
 
     async def generate(
         self,
@@ -47,6 +48,7 @@ class LLMService:
             instructions=instructions,
             input=prompt,
             reasoning={"effort": "none"},
+            max_output_tokens=self.max_output_tokens,
             stream=True,
         )
 

@@ -84,9 +84,35 @@ async def test_generate_configures_streaming_and_disables_reasoning():
             "instructions": "Answer briefly.",
             "input": "What is FastAPI?",
             "reasoning": {"effort": "none"},
+            "max_output_tokens": service.max_output_tokens,
             "stream": True,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_generate_uses_configured_max_output_tokens(monkeypatch):
+    monkeypatch.setattr(
+        "production_rag.services.llm.get_settings",
+        lambda: SimpleNamespace(
+            deepseek_model="test-model",
+            max_output_tokens=256,
+        ),
+    )
+
+    client = FakeClient([SimpleNamespace(type="response.completed")])
+    service = LLMService(client=client)
+
+    chunks = [
+        chunk
+        async for chunk in service.generate(
+            prompt="What is FastAPI?",
+            instructions="Answer briefly.",
+        )
+    ]
+
+    assert chunks == []
+    assert client.responses.calls[0]["max_output_tokens"] == 256
 
 
 async def collect_until_error(service: LLMService) -> tuple[list[str], GenerationError]:
