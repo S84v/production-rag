@@ -682,6 +682,19 @@ The current artifact contains 24 evaluation examples and is intended for manual 
 
 DeepEval is included as the generation-evaluation dependency for further automated evaluation.
 
+#### Failed and incomplete generations
+
+The RAG stream ends with exactly one terminal event: `complete` on success, or `error` on a failed or incomplete generation. The evaluators fail an example whenever either of the following occurs:
+
+* a terminal `error` event is received, or
+* the stream ends without any terminal event (an interrupted stream; reported as `terminal_event_missing`).
+
+Individual failures are recorded per example and evaluation continues, so one failed generation does not abort the run. A failed example is marked with its error code and message and is never presented as a successful result:
+
+* Retrieval and total RAG timing are reported only for generations that complete; a failed example reports no timing.
+* `docs/evaluation/generation_results.md` counts failed examples and, for each failure, shows the error details instead of a generated answer, timing, or source count.
+* Examples with a failed or incomplete generation are excluded from DeepEval scoring, so a partial answer is never turned into a test case or scored as a valid response. If no example completes successfully, DeepEval is skipped with a clear message.
+
 ---
 
 ## Testing

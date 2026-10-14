@@ -14,6 +14,10 @@ from deepeval.models import DeepSeekModel
 from deepeval.test_case import LLMTestCase
 
 from production_rag.core.settings import get_settings
+from production_rag.evaluation import (
+    TERMINAL_EVENT_MISSING_CODE,
+    TERMINAL_EVENT_MISSING_MESSAGE,
+)
 from production_rag.evaluation.dataset import EvaluationExample, load_dataset
 from production_rag.services.rag import RAGService, RAGSource
 
@@ -25,6 +29,13 @@ class AnswerEvaluationResult:
     reference_answer: str
     generated_answer: str
     retrieved_sources: tuple[RAGSource, ...]
+    error_code: str | None = None
+    error_message: str | None = None
+
+    @property
+    def failed(self) -> bool:
+        """Whether generation ended in a terminal error instead of completion."""
+        return self.error_code is not None
 
 
 async def evaluate_example(
@@ -35,6 +46,9 @@ async def evaluate_example(
 ) -> AnswerEvaluationResult:
     answer_parts: list[str] = []
     retrieved_sources: list[RAGSource] = []
+    error_code: str | None = None
+    error_message: str | None = None
+    terminal = False
 
     async for event in rag_service.generate(
         query=example.question,
@@ -44,8 +58,23 @@ async def evaluate_example(
         if event.type == "sources" and event.sources is not None:
             retrieved_sources = event.sources
 
+        elif event.type == "complete":
+            terminal = True
+
+        elif event.type == "error":
+            error_code = event.error_code or TERMINAL_EVENT_MISSING_CODE
+            error_message = event.error_message
+            terminal = True
+
         elif event.type == "text" and event.text is not None:
             answer_parts.append(event.text)
+
+    if not terminal:
+        # The RAG contract guarantees exactly one terminal event, so a stream
+        # that ends without one was interrupted and must not be treated as a
+        # partial success.
+        error_code = TERMINAL_EVENT_MISSING_CODE
+        error_message = TERMINAL_EVENT_MISSING_MESSAGE
 
     return AnswerEvaluationResult(
         example_id=example.id,
@@ -53,6 +82,8 @@ async def evaluate_example(
         reference_answer=example.reference_answer,
         generated_answer="".join(answer_parts),
         retrieved_sources=tuple(retrieved_sources),
+        error_code=error_code,
+        error_message=error_message,
     )
 
 
@@ -81,6 +112,12 @@ async def collect_results(
 def build_test_cases(
     results: list[AnswerEvaluationResult],
 ) -> list[LLMTestCase]:
+    """Build DeepEval cases, excluding examples whose generation failed.
+
+    A failed or incomplete generation produces a partial or empty answer, which
+    must never be scored as if it were a valid response.
+    """
+
     return [
         LLMTestCase(
             input=result.question,
@@ -91,6 +128,7 @@ def build_test_cases(
             ],
         )
         for result in results
+        if not result.failed
     ]
 
 
@@ -128,9 +166,12 @@ def build_metrics() -> list:
 
 
 def print_input_summary(results: list[AnswerEvaluationResult]) -> None:
+    failed_count = sum(1 for result in results if result.failed)
+
     print("Answer Evaluation")
     print("=" * 17)
     print(f"Examples: {len(results)}")
+    print(f"Failed: {failed_count}")
     print()
 
 
@@ -140,6 +181,14 @@ def print_results(results: list[AnswerEvaluationResult]) -> None:
         print("-" * len(result.example_id))
         print(f"Question: {result.question}")
         print(f"Reference: {result.reference_answer}")
+
+        if result.failed:
+            print(f"Status: generation failed ({result.error_code})")
+            if result.error_message:
+                print(f"Error: {result.error_message}")
+            print()
+            continue
+
         print(f"Generated: {result.generated_answer}")
         print("Retrieved:")
 
@@ -194,6 +243,11 @@ async def main() -> None:
     print_results(results)
 
     test_cases = build_test_cases(results)
+
+    if not test_cases:
+        print("No successful generations to score; skipping DeepEval evaluation.")
+        return
+
     metrics = build_metrics()
 
     deepeval_evaluate(
