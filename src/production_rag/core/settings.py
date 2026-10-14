@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     qdrant_url: str = ""
     qdrant_api_key: str = ""
 
+    # Immutable Hugging Face revision for the embedding model. Empty keeps the
+    # default resolution; the container image sets this so the runtime loads
+    # exactly the baked snapshot. Changing it can invalidate existing embeddings
+    # and requires re-ingestion.
+    embedding_model_revision: str = ""
+
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"

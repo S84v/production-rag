@@ -1,5 +1,6 @@
 from sentence_transformers import SentenceTransformer
 
+from production_rag.core.settings import get_settings
 from production_rag.db.session import async_session_factory
 from production_rag.models.chunk import Chunk
 from production_rag.models.embedding import Embedding
@@ -14,6 +15,7 @@ class EmbeddingService:
     def __init__(
         self, encoder=None, vector_store: QdrantVectorStore | None = None
     ) -> None:
+        self.revision = get_settings().embedding_model_revision or None
         self.encoder = encoder
         self.vector_store = vector_store or QdrantVectorStore()
 
@@ -24,7 +26,11 @@ class EmbeddingService:
             logging.set_verbosity_error()
             logging.disable_progress_bar()
 
-            self.encoder = SentenceTransformer(self.MODEL_NAME, local_files_only=True)
+            self.encoder = SentenceTransformer(
+                self.MODEL_NAME,
+                revision=self.revision,
+                local_files_only=True,
+            )
 
         return self.encoder
 

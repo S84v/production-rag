@@ -438,6 +438,10 @@ uv sync --extra cpu
 
 Use it for CPU-only environments such as containers and CI (CI installs with `--extra cpu`). It pins the same PyTorch version as the default, but the installed wheel carries a `+cpu` local version and pulls no CUDA libraries, so it is not byte-for-byte identical to the default Linux wheel. A `gpu` extra is provided as the counterpart that keeps the default PyPI build; `cpu` and `gpu` are mutually exclusive, and a plain `uv sync` keeps the existing default PyPI selection.
 
+### Container image
+
+A multi-stage `Dockerfile` builds a Linux AMD64 backend image using Python 3.12, the CPU-only PyTorch extra, and the embedding model baked in at a pinned revision. See `docs/deployment.md` for building, running, configuration, the separate migration procedure, and troubleshooting.
+
 ---
 
 ### Environment configuration

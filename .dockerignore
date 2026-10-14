@@ -1,0 +1,32 @@
+# Version control
+.git
+.github
+
+# Local environments and secrets (keep the tracked example)
+.venv
+**/.env
+**/.env.*
+!.env.example
+
+# Python caches (nested included)
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+.deepeval/
+
+# Data (corpus, evaluation artifacts) and docs assets
+data/
+docs/
+
+# Tests and frontend
+tests/
+frontend/
+
+# Local notes
+SESSION_HANDOFF.md
+
+# Container files themselves
+Dockerfile
+.dockerignore
+docker/

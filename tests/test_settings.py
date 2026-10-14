@@ -103,3 +103,20 @@ def test_qdrant_hosted_settings_read_environment(monkeypatch):
 
     assert settings.qdrant_url == "https://example.cloud.qdrant.io:6333"
     assert settings.qdrant_api_key == "example-key"
+
+
+def test_embedding_model_revision_defaults_to_empty(monkeypatch):
+    monkeypatch.delenv("EMBEDDING_MODEL_REVISION", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.embedding_model_revision == ""
+
+
+def test_embedding_model_revision_reads_environment(monkeypatch):
+    revision = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
+    monkeypatch.setenv("EMBEDDING_MODEL_REVISION", revision)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.embedding_model_revision == revision
