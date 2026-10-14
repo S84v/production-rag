@@ -67,3 +67,19 @@ def test_cost_bounds_read_environment(monkeypatch):
 
     assert settings.max_output_tokens == 512
     assert settings.max_context_characters == 8000
+
+
+def test_database_url_defaults_to_empty(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.database_url == ""
+
+
+def test_database_url_reads_environment(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host/db")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.database_url == "postgresql://user:pass@host/db"

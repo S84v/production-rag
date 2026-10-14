@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     # Comma-separated collections the public API is allowed to query.
     allowed_collections: str = "fastapi"
 
+    # Optional async PostgreSQL URL for a hosted database (e.g. Neon). When set
+    # it takes precedence over the POSTGRES_* local defaults. The `postgres://`
+    # and `postgresql://` schemes and the libpq `sslmode` parameter are
+    # normalized for the asyncpg driver by db.url.build_database_url.
+    database_url: str = ""
+
     postgres_user: str = "production_rag"
     postgres_password: str = "production_rag_dev"
     postgres_db: str = "production_rag"

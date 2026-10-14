@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 import production_rag.models  # noqa: F401
 from production_rag.core.settings import get_settings
 from production_rag.db.base import Base
+from production_rag.db.url import build_database_url
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -59,15 +60,8 @@ async def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     settings = get_settings()
 
-    database_url = (
-        f"postgresql+asyncpg://"
-        f"{settings.postgres_user}:{settings.postgres_password}"
-        f"@{settings.postgres_host}:{settings.postgres_port}"
-        f"/{settings.postgres_db}"
-    )
-
     connectable = create_async_engine(
-        database_url,
+        build_database_url(settings),
         poolclass=pool.NullPool,
     )
 

@@ -445,6 +445,14 @@ PostgreSQL → localhost:5432
 Qdrant     → localhost:6333
 ```
 
+The PostgreSQL connection defaults to the `POSTGRES_*` settings (the Docker Compose instance). To use a hosted database instead, set `DATABASE_URL`, which takes precedence over `POSTGRES_*`:
+
+```text
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
+```
+
+The URL is normalized for the asyncpg driver: the `postgres://` and `postgresql://` schemes become `postgresql+asyncpg`, and the libpq `sslmode` parameter is translated to asyncpg's `ssl` (an explicit `ssl` is preserved when both are present). Neon connection strings used with asyncpg must omit `channel_binding`: the default Neon string can include `channel_binding=require`, but asyncpg does not support that parameter, so the application raises a configuration error rather than silently dropping the requested authentication setting. Remove `channel_binding=require` and keep `sslmode=require` for TLS. Only connection parameters supported by asyncpg may be used; other libpq-only parameters are not translated. Never commit real credentials.
+
 The DeepSeek API key should be configured locally.
 
 The public API only serves collections listed in `ALLOWED_COLLECTIONS` (comma-separated, default `fastapi`). Requests for any other collection return `404`, whether or not the collection exists in Qdrant. An explicitly empty value denies all collections.
