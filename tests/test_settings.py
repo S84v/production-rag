@@ -83,3 +83,23 @@ def test_database_url_reads_environment(monkeypatch):
     settings = Settings(_env_file=None)
 
     assert settings.database_url == "postgresql://user:pass@host/db"
+
+
+def test_qdrant_hosted_settings_default_to_empty(monkeypatch):
+    monkeypatch.delenv("QDRANT_URL", raising=False)
+    monkeypatch.delenv("QDRANT_API_KEY", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.qdrant_url == ""
+    assert settings.qdrant_api_key == ""
+
+
+def test_qdrant_hosted_settings_read_environment(monkeypatch):
+    monkeypatch.setenv("QDRANT_URL", "https://example.cloud.qdrant.io:6333")
+    monkeypatch.setenv("QDRANT_API_KEY", "example-key")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.qdrant_url == "https://example.cloud.qdrant.io:6333"
+    assert settings.qdrant_api_key == "example-key"

@@ -453,6 +453,15 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
 
 The URL is normalized for the asyncpg driver: the `postgres://` and `postgresql://` schemes become `postgresql+asyncpg`, and the libpq `sslmode` parameter is translated to asyncpg's `ssl` (an explicit `ssl` is preserved when both are present). Neon connection strings used with asyncpg must omit `channel_binding`: the default Neon string can include `channel_binding=require`, but asyncpg does not support that parameter, so the application raises a configuration error rather than silently dropping the requested authentication setting. Remove `channel_binding=require` and keep `sslmode=require` for TLS. Only connection parameters supported by asyncpg may be used; other libpq-only parameters are not translated. Never commit real credentials.
 
+The Qdrant connection defaults to `QDRANT_HOST`/`QDRANT_PORT` (the Docker Compose instance). To use a hosted endpoint, set `QDRANT_URL`, which takes precedence; for Qdrant Cloud also set `QDRANT_API_KEY`:
+
+```text
+QDRANT_URL=https://YOUR-CLUSTER.cloud.qdrant.io:6333
+QDRANT_API_KEY=YOUR_API_KEY
+```
+
+`QDRANT_URL` is passed to the client as `url`, and `QDRANT_API_KEY` is attached only when `QDRANT_URL` is set and the key is non-blank; the local `QDRANT_HOST`/`QDRANT_PORT` connection stays unauthenticated (the API key is ignored in local mode). TLS is derived from the URL's `https://` scheme, and the port is taken from the URL, falling back to the client default `6333` when omitted — include it explicitly when it differs. Never commit real endpoints or API keys.
+
 The DeepSeek API key should be configured locally.
 
 The public API only serves collections listed in `ALLOWED_COLLECTIONS` (comma-separated, default `fastapi`). Requests for any other collection return `404`, whether or not the collection exists in Qdrant. An explicitly empty value denies all collections.

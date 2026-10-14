@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
 
+    # Optional hosted Qdrant endpoint. When set it takes precedence over the
+    # QDRANT_HOST/QDRANT_PORT local defaults; QDRANT_API_KEY is used for auth.
+    qdrant_url: str = ""
+    qdrant_api_key: str = ""
+
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
