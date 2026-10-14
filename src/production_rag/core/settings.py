@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     max_output_tokens: int = Field(default=1024, gt=0)
     max_context_characters: int = Field(default=12000, gt=0)
 
+    # Public API rate limit: requests allowed per client per 60-second window.
+    rate_limit_requests: int = Field(default=10, gt=0)
+    # Read the client IP from the Cloud Run X-Forwarded-For chain. Enable only
+    # for verified direct Cloud Run ingress (see README); defaults to the direct
+    # TCP peer, which cannot be spoofed by request headers.
+    rate_limit_trust_cloud_run_x_forwarded_for: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf_8",

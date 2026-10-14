@@ -335,6 +335,7 @@ Current behavior includes:
 | Malformed JSON                | `422`                    |
 | Nonexistent Qdrant collection | `404`                    |
 | Disallowed collection         | `404`                    |
+| Rate limit exceeded           | `429` (+ `Retry-After`)  |
 
 Collection existence is checked before the `StreamingResponse` is created. This prevents an invalid collection from producing a broken streaming response.
 
@@ -343,6 +344,23 @@ The public API only serves collections on a fixed allowlist (`ALLOWED_COLLECTION
 Field length limits are enforced by the request schema: `query` is capped at 2000 characters and `collection` at 128 characters. Oversized values are rejected with `422` before any collection lookup or generation.
 
 The server also bounds cost independently of the client. Generated output is capped at `MAX_OUTPUT_TOKENS` tokens per answer (default 1024), and the retrieved context sent to the model is capped at `MAX_CONTEXT_CHARACTERS` characters (default 12000). Chunks are included as whole chunks in retrieval-rank order until the budget is reached. The `sources` event lists exactly the chunks that were included in the prompt, so unused chunks are never presented as supporting evidence.
+
+### Rate limiting
+
+`POST /query` is rate limited per client: 10 requests per 60-second window by default, configurable with `RATE_LIMIT_REQUESTS`. The limit is enforced before collection lookup and generation, so an over-limit request never reaches Qdrant or the model. Exceeding it returns `429` with a `Retry-After` header (whole seconds) and a clear message. `GET /health` is not rate limited.
+
+Client identity defaults to the direct TCP peer (`request.client.host`), which cannot be spoofed through request headers.
+
+The limiter is **best-effort abuse control, not a guaranteed spending cap**. Its state is held in memory, per process:
+
+* Each Cloud Run instance (and each uvicorn worker) enforces its own counter, so the effective ceiling scales with the number of instances and no global limit is shared.
+* Behind a proxy the direct peer is the proxy address, so all users share one bucket and the limit becomes effectively per instance rather than per end user.
+* The window is fixed per client and anchored at the client's first request; a burst of up to roughly twice the limit is possible across a window boundary.
+* Tracked state is bounded and expired entries are pruned.
+
+#### Trusted forwarded client IP (Cloud Run)
+
+Setting `RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR=true` makes the limiter read the client IP from the trusted suffix of the `X-Forwarded-For` chain instead of the direct peer. **Enable this only for verified direct Cloud Run ingress.** The proxy must append the real client IP, making the last entry trustworthy; earlier, client-supplied entries are ignored and the candidate must parse as an IP address, otherwise the limiter falls back to the direct peer. Do not enable it for an unverified or multi-hop proxy/CDN topology, where trusting the chain could allow spoofing.
 
 ---
 
@@ -456,6 +474,15 @@ MAX_CONTEXT_CHARACTERS (default 12000)
 ```
 
 `MAX_OUTPUT_TOKENS` bounds the number of tokens generated per answer and is passed to the DeepSeek Responses API as `max_output_tokens`. It also covers reasoning tokens, but reasoning is disabled, so it bounds the visible output. `MAX_CONTEXT_CHARACTERS` bounds the total length of the chunk content included in the retrieved context. Both must be positive integers.
+
+Rate-limiting settings:
+
+```text
+RATE_LIMIT_REQUESTS                              (default 10)
+RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR       (default false)
+```
+
+`RATE_LIMIT_REQUESTS` is the number of `POST /query` requests allowed per client per 60-second window and must be a positive integer. `RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR` controls client identification; leave it `false` unless you have verified the Cloud Run header chain (see [Rate limiting](#rate-limiting)).
 
 ---
 

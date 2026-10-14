@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from production_rag.api.rate_limit import RateLimiter, enforce_rate_limit
 from production_rag.core.settings import Settings, get_settings
 from production_rag.schemas.query import QueryRequest
 from production_rag.services.rag import RAGService
@@ -14,6 +15,10 @@ router = APIRouter()
 
 def get_rag_service(request: Request) -> RAGService:
     return request.app.state.rag_service
+
+
+def get_rate_limiter(request: Request) -> RateLimiter:
+    return request.app.state.rate_limiter
 
 
 def _collection_not_found(collection: str) -> HTTPException:
@@ -28,9 +33,20 @@ def _collection_not_found(collection: str) -> HTTPException:
 @router.post("/query")
 async def query(
     request: QueryRequest,
+    http_request: Request,
     rag_service: Annotated[RAGService, Depends(get_rag_service)],
     settings: Annotated[Settings, Depends(get_settings)],
+    rate_limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> StreamingResponse:
+    # Enforce the rate limit before any collection lookup or generation.
+    enforce_rate_limit(
+        rate_limiter,
+        http_request,
+        trust_cloud_run_x_forwarded_for=(
+            settings.rate_limit_trust_cloud_run_x_forwarded_for
+        ),
+    )
+
     # Reject collections outside the allowlist before any Qdrant lookup.
     if request.collection not in settings.allowed_collection_names:
         raise _collection_not_found(request.collection)

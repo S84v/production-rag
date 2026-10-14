@@ -4,7 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-from production_rag.api.query import get_rag_service
+from production_rag.api.query import get_rag_service, get_rate_limiter
+from production_rag.api.rate_limit import RATE_LIMIT_MESSAGE, RateLimiter
 from production_rag.core.settings import Settings, get_settings
 from production_rag.main import app
 from production_rag.services.rag import RAGEvent, RAGSource
@@ -75,6 +76,19 @@ def fake_rag_service() -> FakeRAGService:
 @pytest.fixture
 def client(fake_rag_service: FakeRAGService) -> TestClient:
     app.dependency_overrides[get_rag_service] = lambda: fake_rag_service
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def limited_client(fake_rag_service: FakeRAGService) -> TestClient:
+    limiter = RateLimiter(limit=1, window_seconds=60.0)
+
+    app.dependency_overrides[get_rag_service] = lambda: fake_rag_service
+    app.dependency_overrides[get_rate_limiter] = lambda: limiter
 
     with TestClient(app) as test_client:
         yield test_client
@@ -317,3 +331,118 @@ def test_query_endpoint_streams_error_event_without_completion(
     }
     # A failed generation must not emit a completion event.
     assert all(event["type"] != "complete" for event in events)
+
+
+def test_query_endpoint_rate_limits_with_retry_after(
+    limited_client: TestClient,
+) -> None:
+    body = {"query": "What is FastAPI?", "collection": "fastapi"}
+
+    first = limited_client.post("/query", json=body)
+    assert first.status_code == 200
+
+    second = limited_client.post("/query", json=body)
+
+    assert second.status_code == 429
+    assert second.json() == {"detail": RATE_LIMIT_MESSAGE}
+
+    retry_after = second.headers["retry-after"]
+    assert retry_after.isdigit()
+    assert int(retry_after) >= 1
+
+
+def test_rate_limited_request_skips_collection_lookup_and_generation(
+    limited_client: TestClient,
+    fake_rag_service: FakeRAGService,
+) -> None:
+    body = {"query": "What is FastAPI?", "collection": "fastapi"}
+
+    limited_client.post("/query", json=body)
+
+    exists_before = list(fake_rag_service.exists_calls)
+    calls_before = list(fake_rag_service.calls)
+
+    response = limited_client.post("/query", json=body)
+
+    assert response.status_code == 429
+    # Enforced before any collection lookup or generation.
+    assert fake_rag_service.exists_calls == exists_before
+    assert fake_rag_service.calls == calls_before
+
+
+def test_rate_limit_is_enforced_before_allowlist(limited_client: TestClient) -> None:
+    limited_client.post(
+        "/query",
+        json={"query": "What is FastAPI?", "collection": "fastapi"},
+    )
+
+    # "internal" is not on the allowlist, but the limiter runs first.
+    response = limited_client.post(
+        "/query",
+        json={"query": "What is FastAPI?", "collection": "internal"},
+    )
+
+    assert response.status_code == 429
+
+
+def test_rate_limit_isolates_clients(fake_rag_service: FakeRAGService) -> None:
+    limiter = RateLimiter(limit=1, window_seconds=60.0)
+
+    app.dependency_overrides[get_rag_service] = lambda: fake_rag_service
+    app.dependency_overrides[get_rate_limiter] = lambda: limiter
+
+    client_a = TestClient(app, client=("203.0.113.1", 1111))
+    client_b = TestClient(app, client=("203.0.113.2", 2222))
+    body = {"query": "What is FastAPI?", "collection": "fastapi"}
+
+    try:
+        assert client_a.post("/query", json=body).status_code == 200
+        assert client_b.post("/query", json=body).status_code == 200
+        assert client_a.post("/query", json=body).status_code == 429
+        assert client_b.post("/query", json=body).status_code == 429
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_forwarded_ip_mode_keys_on_trusted_suffix(
+    fake_rag_service: FakeRAGService,
+) -> None:
+    limiter = RateLimiter(limit=1, window_seconds=60.0)
+
+    app.dependency_overrides[get_rag_service] = lambda: fake_rag_service
+    app.dependency_overrides[get_rate_limiter] = lambda: limiter
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        allowed_collections="fastapi",
+        rate_limit_trust_cloud_run_x_forwarded_for=True,
+    )
+
+    # The direct peer is the same Cloud Run proxy for every request.
+    test_client = TestClient(app, client=("10.0.0.1", 1234))
+    body = {"query": "What is FastAPI?", "collection": "fastapi"}
+
+    try:
+        first = test_client.post(
+            "/query", json=body, headers={"X-Forwarded-For": "1.2.3.4"}
+        )
+        assert first.status_code == 200
+
+        # A different trusted suffix is a different client.
+        other = test_client.post(
+            "/query", json=body, headers={"X-Forwarded-For": "5.6.7.8"}
+        )
+        assert other.status_code == 200
+
+        # The spoofed first entry is ignored; the trusted suffix is 1.2.3.4.
+        spoofed = test_client.post(
+            "/query",
+            json=body,
+            headers={"X-Forwarded-For": "9.9.9.9, 1.2.3.4"},
+        )
+        assert spoofed.status_code == 429
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_health_is_not_rate_limited(client: TestClient) -> None:
+    for _ in range(15):
+        assert client.get("/health").status_code == 200
