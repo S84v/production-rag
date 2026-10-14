@@ -1,15 +1,21 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { streamQuery, type Source } from "./api";
+import { AppNav } from "./components/AppNav";
+import { Logo } from "./components/Logo";
+import type { ViewId } from "./navigation";
+import { AboutView } from "./views/AboutView";
+import { AskView } from "./views/AskView";
+import { ProjectView } from "./views/ProjectView";
 import "./App.css";
 
-function getSourceFilename(sourceUri: string): string {
-  const path = sourceUri.split("?")[0];
-  const filename = path.split("/").filter(Boolean).pop();
-
-  return filename ? decodeURIComponent(filename) : sourceUri;
-}
+const CONTACT_LINKS = [
+  { label: "LinkedIn", href: "https://www.linkedin.com/in/sarang-dave/" },
+  { label: "GitHub", href: "https://github.com/S84v" },
+  { label: "Email", href: "mailto:davesarang08@gmail.com" },
+];
 
 function App() {
+  const [view, setView] = useState<ViewId>("ask");
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
@@ -17,11 +23,10 @@ function App() {
   const [totalTime, setTotalTime] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const trimmedQuery = query.trim();
+  async function runQuery(rawQuery: string) {
+    const trimmedQuery = rawQuery.trim();
 
     if (!trimmedQuery || loading) {
       return;
@@ -67,123 +72,63 @@ function App() {
     }
   }
 
+  function handleSubmit() {
+    void runQuery(query);
+  }
+
+  function handleSelectExample(example: string) {
+    setQuery(example);
+    inputRef.current?.focus();
+  }
+
   return (
-    <main className="app">
-      <header className="header">
-        <div className="eyebrow">DOCUMENTATION ASSISTANT</div>
-        <h1>Production RAG</h1>
-        <p>
-          Ask questions about the FastAPI documentation and get answers
-          grounded in retrieved sources.
-        </p>
+    <div className="app">
+      <header className="app-header">
+        <div className="brand">
+          <Logo className="brand-mark" />
+          <span className="brand-name">DocAssist</span>
+        </div>
+
+        <AppNav view={view} onChange={setView} />
       </header>
 
-      <section className="query-card">
-        <form className="query-form" onSubmit={handleSubmit}>
-          <label htmlFor="query">Ask a question</label>
+      <main className="app-main">
+        {view === "ask" && (
+          <AskView
+            query={query}
+            onQueryChange={setQuery}
+            onSubmit={handleSubmit}
+            onSelectExample={handleSelectExample}
+            loading={loading}
+            error={error}
+            answer={answer}
+            sources={sources}
+            retrievalTime={retrievalTime}
+            totalTime={totalTime}
+            inputRef={inputRef}
+          />
+        )}
 
-          <div className="query-row">
-            <input
-              id="query"
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="What is FastAPI?"
-              disabled={loading}
-              autoComplete="off"
-            />
+        {view === "about" && <AboutView />}
+        {view === "project" && <ProjectView />}
+      </main>
 
-            <button type="submit" disabled={loading || !query.trim()}>
-              {loading ? "Generating..." : "Ask"}
-            </button>
-          </div>
+      <footer className="app-footer">
+        <p className="footer-tagline">
+          DocAssist — Source-grounded Q&amp;A for technical documentation.
+        </p>
 
-          <p className="query-hint">
-            Answers are generated from the indexed FastAPI documentation.
-          </p>
-        </form>
-      </section>
-
-      {error && (
-        <div className="error" role="alert">
-          <strong>Request failed</strong>
-          <span>{error}</span>
-        </div>
-      )}
-
-      {(answer || loading) && (
-        <section className="section answer-section">
-          <div className="section-heading">
-            <h2>Answer</h2>
-            {loading && <span className="status">Streaming</span>}
-          </div>
-
-          <div className="answer">
-            {answer ? (
-              answer
-            ) : (
-              <span className="answer-placeholder">
-                Generating answer...
-              </span>
-            )}
-            {loading && answer && (
-              <span className="cursor" aria-hidden="true" />
-            )}
-          </div>
-        </section>
-      )}
-
-      {sources.length > 0 && (
-        <section className="section sources-section">
-          <div className="section-heading">
-            <div>
-              <h2>Sources</h2>
-              <p>Retrieved documentation used to generate the answer.</p>
-            </div>
-
-            <span className="source-count">
-              {sources.length} {sources.length === 1 ? "source" : "sources"}
-            </span>
-          </div>
-
-          <div className="sources">
-            {sources.map((source, index) => (
-              <article className="source" key={source.chunk_id}>
-                <div className="source-header">
-                  <div className="source-title">
-                    <span className="source-number">{index + 1}</span>
-                    <strong>{getSourceFilename(source.source_uri)}</strong>
-                  </div>
-
-                  <span className="score">
-                    {source.score.toFixed(3)}
-                  </span>
-                </div>
-
-                <div className="source-uri">{source.source_uri}</div>
-
-                <div className="source-meta">
-                  <span>Chunk {source.chunk_index}</span>
-                  <span>Similarity {source.score.toFixed(3)}</span>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {totalTime !== null && (
-        <footer className="metrics">
-          <span>
-            <strong>Retrieval</strong>{" "}
-            {retrievalTime?.toFixed(0) ?? "—"} ms
-          </span>
-          <span>
-            <strong>Total</strong> {totalTime.toFixed(0)} ms
-          </span>
-        </footer>
-      )}
-    </main>
+        <ul className="contact" aria-label="Contact">
+          {CONTACT_LINKS.map((link) => (
+            <li key={link.label}>
+              <a href={link.href} target="_blank" rel="noopener noreferrer">
+                {link.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </footer>
+    </div>
   );
 }
 

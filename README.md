@@ -1,9 +1,15 @@
-# Production RAG
+# DocAssist
 
-<!--![Production RAG frontend](docs/images/frontend.png)-->
-![Production RAG streaming](docs/images/streaming.gif)
+<img src="frontend/public/favicon.svg" alt="" width="52" height="52" />
 
-A production-oriented Retrieval-Augmented Generation (RAG) system built with FastAPI, PostgreSQL, Qdrant, Sentence Transformers, and DeepSeek.
+**Source-grounded Q&A for technical documentation.**
+
+<!--![DocAssist frontend](docs/images/frontend.png)-->
+![DocAssist answering a question with streaming output](docs/images/streaming.gif)
+
+DocAssist is a production-oriented Retrieval-Augmented Generation (RAG) system built with FastAPI, PostgreSQL, Qdrant, Sentence Transformers, and DeepSeek. It answers natural-language questions about technical documentation and returns the documentation sources behind each answer.
+
+The current corpus is the official FastAPI tutorial documentation. The repository keeps the name `production-rag`; **DocAssist** is how the product is presented to users.
 
 The project focuses on the engineering problems that appear when moving beyond a basic RAG prototype:
 
@@ -142,6 +148,8 @@ Qdrant payloads are therefore not treated as the authoritative metadata store.
 | Markdown parsing    | markdown-it-py                         |
 | Evaluation          | Custom retrieval evaluation + DeepEval |
 | Observability       | OpenTelemetry                          |
+| Web frontend        | React + TypeScript + Vite              |
+| Frontend testing    | Vitest + React Testing Library         |
 | Testing             | pytest                                 |
 | Linting             | Ruff                                   |
 | Package management  | uv                                     |
@@ -864,7 +872,7 @@ The test suite covers the major vertical slices of the application, including:
 `.github/workflows/ci.yml` runs on pushes to `main` and on pull requests:
 
 * **backend** — `uv sync --frozen`, `ruff check`, `ruff format --check`, acquisition of the pinned corpus, then `pytest -m "not integration"` (service-free tests only).
-* **frontend** — `npm ci`, `npm run lint`, `npm run build`.
+* **frontend** — `npm ci`, `npm run lint`, `npm run test`, `npm run build`.
 
 CI uses the pinned `uv` version and does not require PostgreSQL, Qdrant, cloud credentials, or paid API calls.
 
@@ -1088,3 +1096,11 @@ Potential future work includes:
 5. Add targeted production-hardening tests.
 6. Revisit caching only if profiling demonstrates a meaningful need.
 7. Add deployment-oriented configuration if the system is eventually deployed.
+
+---
+
+## Contact
+
+* LinkedIn — https://www.linkedin.com/in/sarang-dave/
+* GitHub — https://github.com/S84v
+* Email — davesarang08@gmail.com
