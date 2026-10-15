@@ -626,6 +626,34 @@ Example source information includes:
 - filesystem://path-params.md (chunk 17, similarity: 0.863)
 ```
 
+### Corpus preparation
+
+The pinned documentation is acquired and prepared with a single command:
+
+```bash
+./scripts/acquire_corpus.sh
+```
+
+This clones the pinned upstream revision and runs `production-rag prepare-corpus`,
+which expands MkDocs include directives so the code examples are part of the
+corpus. See `docs/corpus.md` for the scope, exclusions, and layout rules.
+
+### Vector-store reconciliation
+
+Vectors live in Qdrant while PostgreSQL is authoritative for which vectors
+should exist. Drift is reported with a read-only dry run:
+
+```bash
+uv run production-rag reconcile --collection fastapi
+```
+
+The report separates unbacked, superseded-version, inactive-model, and
+foreign-collection points from authoritative vectors, and lists authoritative
+vectors that are missing from Qdrant. Only with `--apply` does it delete points
+that are proven non-authoritative, scoped to the named collection; it never
+deletes PostgreSQL records and never touches another collection. Missing vectors
+are repaired by re-running ingestion, not by reconciliation.
+
 ---
 
 ### API
@@ -673,8 +701,11 @@ The evaluation corpus is the FastAPI documentation.
 The dataset contains:
 
 ```text
-24 evaluation examples
+29 evaluation examples
 ```
+
+24 of these come from the original tutorial subset; the remaining 5 add coverage
+for advanced, deployment, how-to, and testing pages.
 
 ### Retrieval evaluation
 
@@ -718,6 +749,26 @@ MRR
 
 ### Current retrieval baseline
 
+The current baseline is the **anchor-based** retrieval evaluation (2026-10-16)
+over the 29-example dataset (`data/evaluation/fastapi.json`), with no reranker:
+
+|  K | Precision@K | Recall@K | Hit@K |    MRR |
+| -: | ----------: | -------: | ----: | -----: |
+|  5 |      0.1310 |   0.5977 | 0.6552 | 0.5316 |
+| 10 |      0.0862 |   0.7241 | 0.8276 | 0.5595 |
+| 20 |      0.0500 |   0.8046 | 0.8966 | 0.5650 |
+
+K = 5 is the application's current default retrieval depth; K = 10 and K = 20 are
+diagnostic candidate-depth measurements that the application does not use. The
+recorded artifact also states the corpus revision, embedding model, vector counts,
+and that no reranker was applied:
+
+```text
+data/evaluation/results/fastapi-retrieval-baseline-2026-10-16.json
+```
+
+#### Legacy baseline (non-reproducible)
+
 The metrics below are a **legacy, non-reproducible baseline** produced with the
 original UUID-based labels. They are preserved for historical reference only and
 must not be compared against results from the anchor-based dataset.
@@ -729,10 +780,6 @@ must not be compared against results from the anchor-based dataset.
 |  5 |             0.1500 |          0.5417 |       0.6250 | 0.4750 |
 | 10 |             0.0833 |          0.6250 |       0.7083 | 0.4889 |
 | 20 |             0.0521 |          0.7569 |       0.8333 | 0.4991 |
-
-A fresh anchor-based baseline is **pending**: it must be recorded after a real
-evaluation run against a live PostgreSQL + Qdrant build, versioned by date and
-configuration.
 
 The baseline and labeling methodology are documented in:
 
@@ -767,7 +814,7 @@ The generated results are written to:
 docs/evaluation/generation_results.md
 ```
 
-The current artifact contains 24 evaluation examples and is intended for manual comparison of generated answers against the reference answers and retrieved context.
+The current artifact contains 24 evaluation examples (recorded before the corpus expansion) and is intended for manual comparison of generated answers against the reference answers and retrieved context.
 
 DeepEval is included as the generation-evaluation dependency for further automated evaluation.
 
@@ -838,9 +885,10 @@ Prerequisites depend on the test:
 
 PostgreSQL and Qdrant are provided by Docker Compose.
 
-The chunker and anchor-resolution regression tests read the pinned corpus from
-`data/raw/fastapi/`, which is not tracked in Git. Acquire it reproducibly before
-running those tests:
+The chunker, anchor-resolution, and corpus-contract regression tests read the
+prepared corpus from `data/raw/fastapi/`, which is not tracked in Git. Acquire
+and prepare it reproducibly before running those tests (this requires `git` and
+the project environment):
 
 ```bash
 ./scripts/acquire_corpus.sh
@@ -871,7 +919,7 @@ The test suite covers the major vertical slices of the application, including:
 
 `.github/workflows/ci.yml` runs on pushes to `main` and on pull requests:
 
-* **backend** — `uv sync --frozen`, `ruff check`, `ruff format --check`, acquisition of the pinned corpus, then `pytest -m "not integration"` (service-free tests only).
+* **backend** — `uv sync --frozen`, `ruff check`, `ruff format --check`, acquisition and preparation of the pinned corpus, then `pytest -m "not integration"` (service-free tests only).
 * **frontend** — `npm ci`, `npm run lint`, `npm run test`, `npm run build`.
 
 CI uses the pinned `uv` version and does not require PostgreSQL, Qdrant, cloud credentials, or paid API calls.
@@ -892,7 +940,8 @@ production-rag/
 │   ├── evaluation/
 │   │   ├── fastapi.json
 │   │   └── results/
-│   │       └── fastapi-answer-baseline-2026-09-01.json
+│   │       ├── fastapi-answer-baseline-2026-09-01.json
+│   │       └── fastapi-retrieval-baseline-2026-10-16.json
 │   ├── raw/
 │   │   └── fastapi/
 │   └── tmp/
@@ -903,7 +952,8 @@ production-rag/
 │   │   ├── 002-embeddings-as-separate-domain-entity.md
 │   │   ├── 003-structure-aware-markdown-ingestion.md
 │   │   ├── 004-selective-use-of-langchain.md
-│   │   └── 005-public-api-collection-allowlist.md
+│   │   ├── 005-public-api-collection-allowlist.md
+│   │   └── 006-corpus-preparation-and-vector-store-consistency.md
 │   ├── evaluation/
 │   │   ├── generation_results.md
 │   │   └── retrieval_baseline.md
@@ -915,6 +965,8 @@ production-rag/
 │       │   └── query.py
 │       ├── core/
 │       │   └── settings.py
+│       ├── corpus/
+│       │   └── preparation.py
 │       ├── db/
 │       ├── evaluation/
 │       │   ├── answer.py
@@ -932,6 +984,7 @@ production-rag/
 │       │   ├── llm.py
 │       │   ├── qdrant.py
 │       │   ├── rag.py
+│       │   ├── reconciliation.py
 │       │   └── retrieval.py
 │       ├── telemetry.py
 │       └── main.py
@@ -948,17 +1001,23 @@ production-rag/
 
 ## Corpus
 
-The current evaluation corpus is the FastAPI documentation.
+The evaluation corpus is the official FastAPI documentation, pinned to a
+specific revision to keep evaluation reproducible.
 
-The corpus is pinned to a specific FastAPI documentation revision to keep evaluation reproducible.
+The upstream documentation is MkDocs source in which code examples live in
+`docs_src/` and are pulled in through include directives. `scripts/acquire_corpus.sh`
+performs a pinned sparse checkout and then prepares a plain-Markdown corpus by
+expanding those includes and normalising MkDocs-only syntax. Preparation is
+deterministic and fails loudly on unresolved includes or unhandled constructs.
 
-Corpus details are documented in:
+Corpus details (scope, exclusions, layout, and `source_uri` stability) are
+documented in:
 
 ```text
 docs/corpus.md
 ```
 
-The local corpus is stored under:
+The local prepared corpus is stored under:
 
 ```text
 data/raw/fastapi/
@@ -995,6 +1054,14 @@ Markdown structure is retained during chunking instead of treating the corpus as
 The project avoids adopting frameworks simply because they are common in RAG tutorials.
 
 In particular, the core ingestion pipeline does not depend on LangChain.
+
+### Corpus preparation and vector-store consistency
+
+The pinned documentation is prepared deterministically (MkDocs includes expanded,
+generated reference excluded), the authoritative vector set is defined as the
+embeddings of the latest version of each document produced by the active model,
+runtime retrieval and evaluation share that definition, and reconciliation
+reports or removes only provably non-authoritative Qdrant points.
 
 ---
 

@@ -124,3 +124,39 @@ def test_query_command_uses_default_limit():
     )
 
     assert args.limit == 5
+
+
+def test_prepare_corpus_command_parses_arguments(tmp_path):
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "prepare-corpus",
+            "--checkout",
+            str(tmp_path / "checkout"),
+            "--dest",
+            "data/raw/fastapi",
+        ]
+    )
+
+    assert args.command == "prepare-corpus"
+    assert args.checkout == tmp_path / "checkout"
+    assert args.dest == Path("data/raw/fastapi")
+
+
+def test_reconcile_command_defaults_to_dry_run():
+    parser = build_parser()
+
+    args = parser.parse_args(["reconcile", "--collection", "fastapi"])
+
+    assert args.command == "reconcile"
+    assert args.collection == "fastapi"
+    assert args.apply is False
+
+
+def test_reconcile_command_accepts_apply():
+    parser = build_parser()
+
+    args = parser.parse_args(["reconcile", "--collection", "fastapi", "--apply"])
+
+    assert args.apply is True

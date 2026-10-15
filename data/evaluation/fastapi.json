@@ -7,6 +7,10 @@
             {
                 "source_uri": "filesystem://path-params.md",
                 "snippet": "You can declare path \"parameters\" or \"variables\" with the same syntax used by Python format strings:"
+            },
+            {
+                "source_uri": "filesystem://path-params.md",
+                "snippet": "@app.get(\"/items/{item_id}\")\nasync def read_item(item_id):"
             }
         ]
     },
@@ -304,6 +308,61 @@
             {
                 "source_uri": "filesystem://middleware.md",
                 "snippet": "You can add middleware to **FastAPI** applications."
+            }
+        ]
+    },
+    {
+        "id": "fastapi-025",
+        "question": "How do I run code when the application starts and shuts down?",
+        "reference_answer": "Use the `lifespan` parameter of the `FastAPI` app with a context manager (an async function using `yield`): the code before `yield` runs on startup and the code after `yield` runs on shutdown.",
+        "relevant_chunks": [
+            {
+                "source_uri": "filesystem://advanced/events.md",
+                "snippet": "logic using the `lifespan` parameter of the `FastAPI` app"
+            }
+        ]
+    },
+    {
+        "id": "fastapi-026",
+        "question": "How do I package a FastAPI application in a container image?",
+        "reference_answer": "Build a Linux container image with Docker: copy the requirements and application into the image, install the dependencies, and start the app with a command such as `fastapi run`.",
+        "relevant_chunks": [
+            {
+                "source_uri": "filesystem://deployment/docker.md",
+                "snippet": "When deploying FastAPI applications a common approach is to build a **Linux container image**."
+            }
+        ]
+    },
+    {
+        "id": "fastapi-027",
+        "question": "Can FastAPI be used together with GraphQL?",
+        "reference_answer": "Yes. Because FastAPI is based on the ASGI standard, any ASGI-compatible GraphQL library can be integrated, and normal FastAPI path operations can be combined with GraphQL on the same application.",
+        "relevant_chunks": [
+            {
+                "source_uri": "filesystem://how-to/graphql.md",
+                "snippet": "You can combine normal FastAPI *path operations* with GraphQL on the same application."
+            }
+        ]
+    },
+    {
+        "id": "fastapi-028",
+        "question": "How do I test a FastAPI application?",
+        "reference_answer": "Use the `TestClient` (from Starlette, based on HTTPX and pytest): create a `TestClient` by passing the FastAPI application to it, write functions whose names start with `test_`, and use plain `assert` statements.",
+        "relevant_chunks": [
+            {
+                "source_uri": "filesystem://testing.md",
+                "snippet": "Create a `TestClient` by passing your **FastAPI** application to it."
+            }
+        ]
+    },
+    {
+        "id": "fastapi-029",
+        "question": "What is the main objective when deploying a FastAPI application?",
+        "reference_answer": "To serve API clients in a way that is secure, to avoid disruptions, and to use compute resources as efficiently as possible.",
+        "relevant_chunks": [
+            {
+                "source_uri": "filesystem://deployment/concepts.md",
+                "snippet": "the ultimate objective is to be able to **serve your API clients** in a way that is **secure**"
             }
         ]
     }

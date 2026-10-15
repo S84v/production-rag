@@ -10,3 +10,7 @@ data/raw/
 data/processed/
 
 .deepeval/
+
+# Pinned FastAPI checkout used by scripts/acquire_corpus.sh (reproducible, not
+# committed). The prepared corpus lives in data/raw/ (ignored above).
+data/tmp/fastapi-checkout/

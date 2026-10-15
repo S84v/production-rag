@@ -1,43 +1,56 @@
 #!/usr/bin/env bash
 #
-# Fetch the pinned FastAPI documentation corpus used by the ingestion and
-# evaluation tests. The raw Markdown is intentionally kept out of Git, so this
-# script reproduces it deterministically at the revision pinned in
-# docs/corpus.md. Re-running it is safe: each file is overwritten in place.
+# Acquire and prepare the pinned FastAPI documentation corpus used by ingestion
+# and evaluation. The raw Markdown is intentionally kept out of Git; this script
+# reproduces it deterministically at the revision pinned in docs/corpus.md and
+# in src/production_rag/corpus/preparation.py.
+#
+# The upstream documentation is MkDocs source that references runnable examples
+# in docs_src/ and fastapi/ through include directives. The corpus written to
+# data/raw/fastapi/ is the prepared plain Markdown: includes are expanded and
+# MkDocs-only syntax is normalised. Preparation is deterministic and fails on
+# unresolved includes or unhandled constructs.
+#
+# Requirements: git and the project environment (`uv sync`). Re-running the
+# script is safe: the checkout is recreated and the destination corpus is
+# rewritten; only files recorded in the previous preparation manifest are
+# replaced.
 
 set -euo pipefail
 
 REVISION="244d66308d6c525f394d0c2ce32dabceb2ed262b"
-BASE_URL="https://raw.githubusercontent.com/fastapi/fastapi/${REVISION}/docs/en/docs/tutorial"
+REPOSITORY="https://github.com/fastapi/fastapi.git"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+CHECKOUT_DIR="${REPO_ROOT}/data/tmp/fastapi-checkout"
 DEST_DIR="${REPO_ROOT}/data/raw/fastapi"
 
-FILES=(
-  "first-steps.md"
-  "path-params.md"
-  "path-params-numeric-validations.md"
-  "query-params.md"
-  "query-params-str-validations.md"
-  "body.md"
-  "body-fields.md"
-  "body-nested-models.md"
-  "response-model.md"
-  "response-status-code.md"
-  "dependencies/index.md"
-  "dependencies/sub-dependencies.md"
-  "handling-errors.md"
-  "middleware.md"
-  "security/first-steps.md"
-  "security/oauth2-jwt.md"
-)
+rm -rf "${CHECKOUT_DIR}"
+mkdir -p "$(dirname "${CHECKOUT_DIR}")"
 
-for file in "${FILES[@]}"; do
-  mkdir -p "${DEST_DIR}/$(dirname "${file}")"
-  curl --fail --silent --show-error --location \
-    "${BASE_URL}/${file}" \
-    --output "${DEST_DIR}/${file}"
-done
+git clone --filter=blob:none --no-checkout --quiet "${REPOSITORY}" "${CHECKOUT_DIR}"
+git -C "${CHECKOUT_DIR}" sparse-checkout init --no-cone
+git -C "${CHECKOUT_DIR}" sparse-checkout set \
+  'docs/en/docs/**' \
+  'docs_src/**' \
+  'fastapi/**' \
+  'LICENSE'
 
-echo "Acquired ${#FILES[@]} corpus files into ${DEST_DIR}"
+git -C "${CHECKOUT_DIR}" checkout --quiet "${REVISION}"
+
+RESOLVED_REVISION="$(git -C "${CHECKOUT_DIR}" rev-parse HEAD)"
+
+if [[ "${RESOLVED_REVISION}" != "${REVISION}" ]]; then
+  echo "error: resolved revision ${RESOLVED_REVISION} does not match pin ${REVISION}" >&2
+  exit 1
+fi
+
+cd "${REPO_ROOT}"
+
+uv run production-rag prepare-corpus \
+  --checkout "${CHECKOUT_DIR}" \
+  --dest "${DEST_DIR}"
+
+echo "Prepared corpus at ${DEST_DIR} from ${REPOSITORY}@${REVISION}"

@@ -106,7 +106,13 @@ def test_load_dataset_requires_json_array(tmp_path: Path) -> None:
 def test_repository_dataset_uses_content_anchors() -> None:
     examples = load_dataset(DATASET_PATH)
 
-    assert len(examples) == 24
+    ids = {example.id for example in examples}
+    original_ids = {f"fastapi-{index:03d}" for index in range(1, 25)}
+
+    # The original tutorial examples must be preserved, and the expanded corpus
+    # adds coverage for advanced, deployment, how-to, and testing pages.
+    assert original_ids <= ids
+    assert len(examples) > len(original_ids)
 
     for example in examples:
         assert example.relevant_chunks

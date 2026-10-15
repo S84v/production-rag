@@ -1,0 +1,57 @@
+{
+    "evaluation": "retrieval",
+    "dataset": "data/evaluation/fastapi.json",
+    "collection": "fastapi",
+    "retrieval_limit": 5,
+    "examples": 29,
+    "run_date": "2026-10-16",
+    "commit": "c365fbd92b7be32bc5b465061cd57545b33f931d",
+    "working_tree": "dirty (uncommitted corpus preparation and reconciliation changes)",
+    "command": "uv run python -m production_rag.evaluation.retrieval --dataset data/evaluation/fastapi.json --collection fastapi --k <K>",
+    "k_values": [
+        5,
+        10,
+        20
+    ],
+    "corpus": {
+        "source": "fastapi/fastapi",
+        "revision": "244d66308d6c525f394d0c2ce32dabceb2ed262b",
+        "prepared_documents": 135,
+        "current_chunks": 1100,
+        "current_vectors": 1100
+    },
+    "embedding": {
+        "model_name": "BAAI/bge-small-en-v1.5",
+        "model_version": "1",
+        "dimensions": 384,
+        "distance": "cosine"
+    },
+    "reranker": null,
+    "metrics": {
+        "5": {
+            "precision_at_k": 0.1310,
+            "recall_at_k": 0.5977,
+            "hit_at_k": 0.6552,
+            "mrr": 0.5316
+        },
+        "10": {
+            "precision_at_k": 0.0862,
+            "recall_at_k": 0.7241,
+            "hit_at_k": 0.8276,
+            "mrr": 0.5595
+        },
+        "20": {
+            "precision_at_k": 0.0500,
+            "recall_at_k": 0.8046,
+            "hit_at_k": 0.8966,
+            "mrr": 0.5650
+        }
+    },
+    "observations": [
+        "K = 5 is the application's current default retrieval depth (the POST /query default limit and the evaluation CLI default).",
+        "K = 10 and K = 20 are diagnostic candidate-depth measurements; the application does not retrieve at those depths.",
+        "Recall and hit rate increase with K while precision decreases; no reranker or result filtering was applied.",
+        "The dataset contains 29 content-anchor examples; the resolver requires every snippet to match exactly one current chunk or evaluation fails.",
+        "Per-example metrics are not recorded in this artifact."
+    ]
+}

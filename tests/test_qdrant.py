@@ -82,3 +82,56 @@ async def test_search_returns_point_ids_and_scores():
     )
 
     assert results == [(point_id, 0.91)]
+
+
+@pytest.mark.asyncio
+async def test_count_points_reports_stored_points():
+    client = FakeQdrantClient(collections=["fastapi"])
+    client.seed_point("fastapi", uuid.uuid4())
+    client.seed_point("fastapi", uuid.uuid4())
+
+    store = QdrantVectorStore(client=client)
+
+    assert await store.count_points("fastapi") == 2
+
+
+@pytest.mark.asyncio
+async def test_scroll_point_ids_paginates_over_every_point():
+    client = FakeQdrantClient(collections=["fastapi"])
+    expected = {uuid.uuid4() for _ in range(300)}
+
+    for point_id in expected:
+        client.seed_point("fastapi", point_id)
+
+    store = QdrantVectorStore(client=client)
+
+    assert await store.scroll_point_ids("fastapi") == expected
+
+
+@pytest.mark.asyncio
+async def test_existing_point_ids_returns_only_present_points():
+    present = uuid.uuid4()
+    absent = uuid.uuid4()
+
+    client = FakeQdrantClient(collections=["fastapi"])
+    client.seed_point("fastapi", present)
+
+    store = QdrantVectorStore(client=client)
+
+    assert await store.existing_point_ids("fastapi", [present, absent]) == {present}
+
+
+@pytest.mark.asyncio
+async def test_delete_points_removes_only_requested_points():
+    keep = uuid.uuid4()
+    drop = uuid.uuid4()
+
+    client = FakeQdrantClient(collections=["fastapi"])
+    client.seed_point("fastapi", keep)
+    client.seed_point("fastapi", drop)
+
+    store = QdrantVectorStore(client=client)
+
+    assert await store.delete_points("fastapi", [drop]) == 1
+    assert await store.scroll_point_ids("fastapi") == {keep}
+    assert client.deleted_points == [("fastapi", [str(drop)])]

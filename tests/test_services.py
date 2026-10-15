@@ -344,7 +344,10 @@ async def test_embedding_service_creates_embedding_for_chunk():
 
     assert len(chunks) > 0
 
-    embedding_service = EmbeddingService(encoder=FakeEmbeddingEncoder())
+    embedding_service = EmbeddingService(
+        encoder=FakeEmbeddingEncoder(),
+        vector_store=QdrantVectorStore(client=FakeQdrantClient()),
+    )
 
     embedding = await embedding_service.embed_chunk(
         chunk=chunks[0],
@@ -383,7 +386,10 @@ async def test_embedding_service_creates_embeddings_for_chunks():
 
     assert len(chunks) > 1
 
-    embedding_service = EmbeddingService(encoder=FakeEmbeddingEncoder())
+    embedding_service = EmbeddingService(
+        encoder=FakeEmbeddingEncoder(),
+        vector_store=QdrantVectorStore(client=FakeQdrantClient()),
+    )
 
     embeddings = await embedding_service.embed_chunks(
         chunks=chunks,
@@ -429,7 +435,9 @@ async def test_embedding_service_uses_real_embedding_model():
 
     assert len(chunks) > 0
 
-    embedding_service = EmbeddingService()
+    embedding_service = EmbeddingService(
+        vector_store=QdrantVectorStore(client=FakeQdrantClient())
+    )
 
     embedding = await embedding_service.embed_chunk(
         chunk=chunks[0],
@@ -530,7 +538,10 @@ async def test_embedding_service_repairs_missing_qdrant_point():
 
     assert len(qdrant_client.upserted_points) == 1
 
+    # Simulate the vector disappearing from Qdrant while the embedding record
+    # stays in PostgreSQL.
     qdrant_client.upserted_points.clear()
+    qdrant_client.remove_point("fastapi", first_embedding.id)
 
     second_embedding = await embedding_service.embed_chunk(
         chunk=chunks[0],
