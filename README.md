@@ -926,6 +926,30 @@ CI uses the pinned `uv` version and does not require PostgreSQL, Qdrant, cloud c
 
 ---
 
+## Continuous deployment
+
+`.github/workflows/cd.yml` deploys a commit to the existing production
+environment (Cloud Run + Firebase Hosting). It does not run tests: it starts
+only after the `CI` workflow completes successfully for a push to `main`, and it
+deploys exactly the commit CI ran on. A read-only preflight skips any successful
+CI run whose commit is no longer the head of `main`, so an out-of-order run
+cannot overwrite a newer deployment. Pull requests and forks are excluded, and
+authentication uses GitHub OIDC with Google Cloud Workload Identity Federation —
+no long-lived service-account keys.
+
+The pipeline builds the commit-SHA image, runs `alembic upgrade head` as a
+separate Cloud Run job (a migration failure blocks the deploy), deploys the new
+revision with no traffic and promotes it only after health checks pass, then
+builds the frontend with the deployed API URL, stages it on a temporary Firebase
+Hosting preview channel, verifies the built bundle, and promotes that version to
+the live channel. No GitHub secrets are required once WIF is configured.
+
+See `docs/deployment.md` for the verified production targets, the required
+GitHub variables, the IAM/Workload Identity Federation setup, and the rollback
+procedure.
+
+---
+
 ## Project structure
 
 ```text
@@ -1162,7 +1186,9 @@ Potential future work includes:
 4. Improve failure handling around external services.
 5. Add targeted production-hardening tests.
 6. Revisit caching only if profiling demonstrates a meaningful need.
-7. Add deployment-oriented configuration if the system is eventually deployed.
+7. ~~Add deployment-oriented configuration if the system is eventually deployed.~~
+   Deployed to Cloud Run and Firebase Hosting, with a CD workflow (see
+   `docs/deployment.md`).
 
 ---
 

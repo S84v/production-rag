@@ -1,0 +1,513 @@
+name: CD
+
+# Deploy a successfully tested commit from main to the existing production
+# environment (Cloud Run + Firebase Hosting).
+#
+# This workflow never runs tests and never re-runs CI. It is triggered only
+# when the "CI" workflow finishes for a push to main, and it deploys exactly the
+# commit CI ran on (github.event.workflow_run.head_sha) rather than the current
+# default-branch tip. See "Continuous deployment" in docs/deployment.md.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+# Least privilege by default. The deploy job adds id-token write so it can
+# exchange a short-lived GitHub OIDC token for Google Cloud credentials through
+# Workload Identity Federation. No long-lived keys are used.
+permissions:
+  contents: read
+
+# Serialize production deployments. A running migration or traffic shift must
+# never be cancelled by a later push.
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+jobs:
+  # Freshness gate. Successful CI runs can finish out of order, so without this
+  # an older run could deploy after a newer commit has already reached main.
+  # This read-only job confirms the CI run's exact commit is still the head of
+  # main before any cloud authentication happens. It never switches the deployed
+  # commit: the deploy job still checks out and ships the CI-tested head_sha.
+  preflight:
+    name: Verify the CI commit is still main
+    runs-on: ubuntu-latest
+    # Same fail-closed restrictions as the deploy job. If this is false the job
+    # is skipped, which skips the deploy job that needs it.
+    if: >-
+      github.repository == 'S84v/production-rag' &&
+      github.repository_id == '1326833407' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_repository.id == 1326833407
+    permissions:
+      contents: read
+    outputs:
+      proceed: ${{ steps.freshness.outputs.proceed }}
+    steps:
+      - name: Compare the CI commit with the current main head
+        id: freshness
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Fail closed: if the current main SHA cannot be read, abort rather
+          # than risk deploying a commit that may already be stale.
+          current_main="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha')"
+          if [ -z "$current_main" ]; then
+            echo "::error::Could not determine the current main SHA."
+            exit 1
+          fi
+
+          echo "CI commit:    $TARGET_SHA"
+          echo "Current main: $current_main"
+
+          if [ "$TARGET_SHA" = "$current_main" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "The CI commit is still the head of main."
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping deployment: the successful CI run for ${TARGET_SHA} is not the current head of main (${current_main}); the newer commit's own CD run will deploy."
+          fi
+
+  deploy:
+    name: Deploy to production
+    needs: preflight
+    runs-on: ubuntu-latest
+    # Fail closed: deploy only for the expected repository, only from a
+    # successful CI run for a push to main in this same repository. This
+    # excludes pull requests, forks, and any other upstream event. The immutable
+    # repository ID is checked in addition to the name (which can be reused
+    # after a rename/transfer) for defense in depth.
+    if: >-
+      github.repository == 'S84v/production-rag' &&
+      github.repository_id == '1326833407' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_repository.id == 1326833407 &&
+      needs.preflight.outputs.proceed == 'true'
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Exact commit CI ran on. Never use github.sha (the default-branch tip) or
+      # a pull-request head here.
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+      GAR_IMAGE: ${{ vars.GAR_IMAGE }}
+      CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      CLOUD_RUN_JOB: ${{ vars.CLOUD_RUN_JOB }}
+      CLOUD_RUN_RUNTIME_SA: ${{ vars.CLOUD_RUN_RUNTIME_SA }}
+      GCP_DEPLOY_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+      APP_NAME: ${{ vars.APP_NAME }}
+      ALLOWED_COLLECTIONS: ${{ vars.ALLOWED_COLLECTIONS }}
+      MAX_OUTPUT_TOKENS: ${{ vars.MAX_OUTPUT_TOKENS }}
+      MAX_CONTEXT_CHARACTERS: ${{ vars.MAX_CONTEXT_CHARACTERS }}
+      RATE_LIMIT_REQUESTS: ${{ vars.RATE_LIMIT_REQUESTS }}
+      RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR: ${{ vars.RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR }}
+      CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
+
+    steps:
+      - name: Validate configuration and production target
+        run: |
+          set -euo pipefail
+
+          missing=""
+          for name in \
+            GCP_PROJECT_ID GCP_REGION GAR_REPOSITORY GAR_IMAGE \
+            CLOUD_RUN_SERVICE CLOUD_RUN_JOB CLOUD_RUN_RUNTIME_SA \
+            GCP_DEPLOY_SERVICE_ACCOUNT WIF_PROVIDER FIREBASE_PROJECT_ID \
+            APP_NAME ALLOWED_COLLECTIONS MAX_OUTPUT_TOKENS \
+            MAX_CONTEXT_CHARACTERS RATE_LIMIT_REQUESTS \
+            RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR CORS_ALLOWED_ORIGINS; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required GitHub variables:$missing"
+            exit 1
+          fi
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          # Target assertions. These guard against deploying to the wrong
+          # project/region/service; they never create resources.
+          [ "$GCP_PROJECT_ID" = "docassist-prod-2026" ] || fail "GCP_PROJECT_ID must be docassist-prod-2026 (got '$GCP_PROJECT_ID')"
+          [ "$GCP_REGION" = "asia-southeast1" ] || fail "GCP_REGION must be asia-southeast1 (got '$GCP_REGION')"
+          [ "$GAR_REPOSITORY" = "docassist" ] || fail "GAR_REPOSITORY must be docassist (got '$GAR_REPOSITORY')"
+          [ "$GAR_IMAGE" = "docassist-api" ] || fail "GAR_IMAGE must be docassist-api (got '$GAR_IMAGE')"
+          [ "$CLOUD_RUN_SERVICE" = "docassist-api" ] || fail "CLOUD_RUN_SERVICE must be docassist-api (got '$CLOUD_RUN_SERVICE')"
+          [ "$CLOUD_RUN_JOB" = "docassist-migrate" ] || fail "CLOUD_RUN_JOB must be docassist-migrate (got '$CLOUD_RUN_JOB')"
+          [ "$FIREBASE_PROJECT_ID" = "docassist-prod-2026" ] || fail "FIREBASE_PROJECT_ID must be docassist-prod-2026 (got '$FIREBASE_PROJECT_ID')"
+
+          case "$CLOUD_RUN_RUNTIME_SA" in
+            *@docassist-prod-2026.iam.gserviceaccount.com) ;;
+            *) fail "CLOUD_RUN_RUNTIME_SA must belong to docassist-prod-2026" ;;
+          esac
+          case "$GCP_DEPLOY_SERVICE_ACCOUNT" in
+            *@docassist-prod-2026.iam.gserviceaccount.com) ;;
+            *) fail "GCP_DEPLOY_SERVICE_ACCOUNT must belong to docassist-prod-2026" ;;
+          esac
+          case "$WIF_PROVIDER" in
+            projects/805794491895/locations/global/workloadIdentityPools/*) ;;
+            *) fail "WIF_PROVIDER must belong to project 805794491895" ;;
+          esac
+
+          echo "Configuration validated for $CLOUD_RUN_SERVICE in $GCP_PROJECT_ID/$GCP_REGION."
+
+      - name: Check out the deployed commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push the commit-SHA image
+        id: image
+        run: |
+          set -euo pipefail
+          image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${GAR_IMAGE}"
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker build --platform linux/amd64 --tag "${image}:${SHA}" .
+          docker push "${image}:${SHA}"
+
+          # Resolve the immutable digest so every later step uses the digest,
+          # never the mutable tag.
+          digest="$(gcloud artifacts docker images describe "${image}:${SHA}" \
+            --format='value(image_summary.digest)')"
+          if ! printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            echo "::error::Could not resolve a valid image digest (got '$digest')."
+            exit 1
+          fi
+          echo "image_ref=${image}@${digest}" >> "$GITHUB_OUTPUT"
+          echo "Pushed ${image}:${SHA} (${digest})."
+
+      - name: Record the current serving revision
+        id: previous
+        run: |
+          set -euo pipefail
+          # Establish the rollback target before any migration or traffic
+          # change, so an indeterminate target aborts before the schema changes.
+          revision="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format=json \
+            | jq -r '[.status.traffic[] | select(.percent > 0 and .revisionName != null)] | max_by(.percent) | .revisionName // ""')"
+          if [ -z "$revision" ]; then
+            echo "::error::Could not determine the currently serving revision; refusing to deploy without a rollback target."
+            exit 1
+          fi
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "Current serving revision: $revision"
+
+      - name: Point the migration job at the new image
+        run: |
+          set -euo pipefail
+          # Preserve the job's contract: it runs `alembic upgrade head` with the
+          # runtime service account and the production DATABASE_URL secret. env
+          # and secrets are restated explicitly so the job cannot drift.
+          gcloud run jobs update "$CLOUD_RUN_JOB" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --image "${{ steps.image.outputs.image_ref }}" \
+            --service-account "$CLOUD_RUN_RUNTIME_SA" \
+            --command alembic \
+            --args upgrade,head \
+            --set-secrets "DATABASE_URL=DATABASE_URL:latest" \
+            --max-retries 0 \
+            --quiet
+
+      - name: Run Alembic migrations
+        run: |
+          set -euo pipefail
+          # Migrations run separately from application startup. A failed or
+          # incomplete migration must stop the workflow before any deploy.
+          execution="$(gcloud run jobs execute "$CLOUD_RUN_JOB" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --format='value(metadata.name)')"
+          if [ -z "$execution" ]; then
+            echo "::error::Could not start the migration execution."
+            exit 1
+          fi
+          echo "Migration execution: $execution"
+
+          # Poll until the execution reports a Completed condition. An initial
+          # absence of a successful task is not terminal; only a failed or
+          # missing completion within the deadline is.
+          deadline=$((SECONDS + 900))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            execution_json="$(gcloud run jobs executions describe "$execution" \
+              --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format=json)"
+            completed="$(jq -r '[.status.conditions[]? | select(.type=="Completed")][0].status // ""' <<<"$execution_json")"
+            succeeded="$(jq -r '.status.succeededCount // 0' <<<"$execution_json")"
+            failed="$(jq -r '.status.failedCount // 0' <<<"$execution_json")"
+
+            case "$completed" in
+              True)
+                if [ "$succeeded" = "1" ] && [ "$failed" = "0" ]; then
+                  echo "Migration succeeded."
+                  exit 0
+                fi
+                echo "::error::Migration execution $execution finished without success (succeeded=$succeeded failed=$failed)."
+                exit 1
+                ;;
+              False)
+                echo "::error::Migration execution $execution failed."
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "::error::Migration execution $execution did not finish within 900s."
+          exit 1
+
+      - name: Deploy the revision without production traffic
+        id: deploy
+        run: |
+          set -euo pipefail
+          tag="sha-${SHA:0:12}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          # `--set-env-vars` replaces the whole env set, so every non-secret
+          # value is restated. A custom "@" delimiter is used because a value
+          # (e.g. CORS_ALLOWED_ORIGINS) may itself contain commas.
+          env_vars="^@^APP_NAME=${APP_NAME}@ALLOWED_COLLECTIONS=${ALLOWED_COLLECTIONS}@MAX_OUTPUT_TOKENS=${MAX_OUTPUT_TOKENS}@MAX_CONTEXT_CHARACTERS=${MAX_CONTEXT_CHARACTERS}@RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS}@RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR=${RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR}@CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
+          secrets="DATABASE_URL=DATABASE_URL:latest,QDRANT_URL=QDRANT_URL:latest,QDRANT_API_KEY=QDRANT_API_KEY:latest,DEEPSEEK_API_KEY=DEEPSEEK_API_KEY:latest"
+
+          # Verified production settings are restated to preserve them. No
+          # min/max instance flags are passed: the service-level and
+          # revision-level maximum-instance values differ, so the effective
+          # scaling is left untouched. IAM is not modified here, so the existing
+          # public invoker policy is preserved.
+          gcloud run deploy "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --image "${{ steps.image.outputs.image_ref }}" \
+            --service-account "$CLOUD_RUN_RUNTIME_SA" \
+            --memory 2Gi \
+            --cpu 1 \
+            --concurrency 5 \
+            --timeout 300 \
+            --cpu-boost \
+            --no-traffic \
+            --tag "$tag" \
+            --set-env-vars "$env_vars" \
+            --set-secrets "$secrets" \
+            --quiet
+
+      - name: Verify the tagged revision before promotion
+        run: |
+          set -euo pipefail
+          tag="${{ steps.deploy.outputs.tag }}"
+
+          tag_url=""
+          for _ in $(seq 1 30); do
+            tag_url="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+              --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format=json \
+              | jq -r --arg tag "$tag" '[.status.traffic[] | select(.tag==$tag)][0].url // ""')"
+            [ -n "$tag_url" ] && break
+            sleep 5
+          done
+          if [ -z "$tag_url" ]; then
+            echo "::error::Timed out waiting for traffic tag '$tag' to become available."
+            exit 1
+          fi
+          echo "Tagged revision URL: $tag_url"
+
+          # Retry /health: the first request after scale-to-zero can take well
+          # over 20 seconds.
+          health=""
+          for attempt in $(seq 1 36); do
+            code="$(curl -s -o "$RUNNER_TEMP/health.json" -w '%{http_code}' --max-time 10 "$tag_url/health" || true)"
+            if [ "$code" = "200" ] && [ "$(cat "$RUNNER_TEMP/health.json" 2>/dev/null)" = '{"status":"ok"}' ]; then
+              health="ok"
+              break
+            fi
+            echo "Health attempt $attempt: HTTP ${code:-none}"
+            sleep 5
+          done
+          if [ "$health" != "ok" ]; then
+            echo "::error::Tagged revision did not become healthy."
+            exit 1
+          fi
+
+          # A disallowed collection must return 404. This exercises the public
+          # contract without a generation request or any database/vector write.
+          code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            -X POST "$tag_url/query" \
+            -H 'Content-Type: application/json' \
+            -d '{"query":"__cd_health_check__","collection":"__cd_health_check__","limit":1}' || true)"
+          if [ "$code" != "404" ]; then
+            echo "::error::Expected 404 for a disallowed collection, got '${code:-none}'."
+            exit 1
+          fi
+          echo "Tagged revision verified (health + disallowed-collection 404)."
+
+      - name: Promote the verified revision
+        id: promote
+        run: |
+          set -euo pipefail
+          tag="${{ steps.deploy.outputs.tag }}"
+
+          gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --to-tags "${tag}=100" \
+            --quiet
+
+          service_url="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" --format='value(status.url)')"
+          echo "service_url=$service_url" >> "$GITHUB_OUTPUT"
+
+          ok=""
+          for attempt in $(seq 1 12); do
+            code="$(curl -s -o "$RUNNER_TEMP/stable_health.json" -w '%{http_code}' --max-time 20 "$service_url/health" || true)"
+            if [ "$code" = "200" ] && [ "$(cat "$RUNNER_TEMP/stable_health.json" 2>/dev/null)" = '{"status":"ok"}' ]; then
+              ok="ok"
+              break
+            fi
+            echo "Stable URL attempt $attempt: HTTP ${code:-none}"
+            sleep 5
+          done
+
+          if [ "$ok" != "ok" ]; then
+            echo "::error::Stable service URL failed after promotion; restoring traffic to ${{ steps.previous.outputs.revision }}."
+            gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
+              --project "$GCP_PROJECT_ID" \
+              --region "$GCP_REGION" \
+              --to-revisions "${{ steps.previous.outputs.revision }}=100" \
+              --quiet
+            exit 1
+          fi
+          echo "Promoted '$tag'; $service_url is healthy."
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Pin the exact patch. Node 24.17.0 (and 22.23.0) carry an http.Agent
+          # keep-alive regression (nodejs/node#63989) that makes firebase-tools'
+          # WIF/ADC token exchange fail with "Premature close"; fixed in 24.18.0.
+          # A bare "24" is not enough: setup-node would serve the runner's cached
+          # 24.17.0.
+          node-version: "24.18.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build the frontend against the deployed API
+        working-directory: frontend
+        env:
+          # Public, build-time value. Vite inlines it into the bundle.
+          VITE_API_BASE_URL: ${{ steps.promote.outputs.service_url }}
+        run: npm run build
+
+      # The frontend is staged on a temporary preview channel and verified
+      # before its version is promoted to the live channel. All Firebase CLI
+      # invocations use the pinned version and the federated Application Default
+      # Credentials written by the auth step above; no FIREBASE_TOKEN or
+      # service-account JSON key is used. The CLI version must be >= 15.22.3,
+      # where the ADC/WIF keep-alive fix (firebase/firebase-tools#10717) landed;
+      # together with the pinned Node 24.18.0 that makes the WIF token exchange
+      # reliable.
+
+      - name: Deploy the frontend to a temporary preview channel
+        id: preview
+        run: |
+          set -euo pipefail
+          channel="cd-${SHA:0:12}"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+          # --json emits {"status":"success","result":{"<site>":{"url":...}}}.
+          npx --yes firebase-tools@15.33.0 hosting:channel:deploy "$channel" \
+            --expires 2h \
+            --project "$FIREBASE_PROJECT_ID" \
+            --json > "$RUNNER_TEMP/preview.json"
+
+          preview_url="$(jq -r '[.result[]? | .url | select(. != null and . != "")][0] // ""' \
+            "$RUNNER_TEMP/preview.json" 2>/dev/null || true)"
+          if [ -z "$preview_url" ]; then
+            echo "::error::Could not determine the preview channel URL."
+            cat "$RUNNER_TEMP/preview.json" || true
+            exit 1
+          fi
+          echo "preview_url=$preview_url" >> "$GITHUB_OUTPUT"
+          echo "Preview channel URL: $preview_url"
+
+      - name: Verify the preview deployment
+        run: |
+          set -euo pipefail
+          preview_url="${{ steps.preview.outputs.preview_url }}"
+          api_url="${{ steps.promote.outputs.service_url }}"
+
+          # Static hosting check only: fetch the deployed bundle and confirm the
+          # build-time API URL was inlined. No generation request is made and the
+          # preview origin is not added to CORS.
+          curl -fsS --max-time 30 "$preview_url/" -o "$RUNNER_TEMP/preview_index.html"
+          asset="$(grep -oE '/assets/[A-Za-z0-9._-]+\.js' "$RUNNER_TEMP/preview_index.html" | head -1)"
+          if [ -z "$asset" ]; then
+            echo "::error::No JS bundle referenced by $preview_url."
+            exit 1
+          fi
+          curl -fsS --max-time 60 "$preview_url$asset" -o "$RUNNER_TEMP/preview_bundle.js"
+          if ! grep -qF "$api_url" "$RUNNER_TEMP/preview_bundle.js"; then
+            echo "::error::Preview bundle does not reference the API URL $api_url."
+            exit 1
+          fi
+          echo "Preview verified at $preview_url."
+
+      - name: Promote the verified preview to live
+        run: |
+          set -euo pipefail
+          channel="${{ steps.preview.outputs.channel }}"
+
+          # Clone the verified preview channel's version into the live channel.
+          # This is the supported CLI promotion operation; there is no
+          # `firebase hosting:rollback` command.
+          npx --yes firebase-tools@15.33.0 hosting:clone \
+            "${FIREBASE_PROJECT_ID}:${channel}" \
+            "${FIREBASE_PROJECT_ID}:live" \
+            --project "$FIREBASE_PROJECT_ID" \
+            --non-interactive
+
+      - name: Verify the live frontend
+        run: |
+          set -euo pipefail
+          api_url="${{ steps.promote.outputs.service_url }}"
+          site_url="https://${FIREBASE_PROJECT_ID}.web.app"
+
+          curl -fsS --max-time 30 "$site_url/" -o "$RUNNER_TEMP/index.html"
+          asset="$(grep -oE '/assets/[A-Za-z0-9._-]+\.js' "$RUNNER_TEMP/index.html" | head -1)"
+          if [ -z "$asset" ]; then
+            echo "::error::No JS bundle referenced by $site_url."
+            exit 1
+          fi
+          curl -fsS --max-time 60 "$site_url$asset" -o "$RUNNER_TEMP/bundle.js"
+          if ! grep -qF "$api_url" "$RUNNER_TEMP/bundle.js"; then
+            echo "::error::Deployed bundle does not reference the API URL $api_url."
+            exit 1
+          fi
+          echo "Frontend live at $site_url and the bundle references $api_url."
