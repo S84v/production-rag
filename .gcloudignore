@@ -1,0 +1,14 @@
+.git/
+.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.deepeval/
+**/node_modules/
+frontend/dist/
+data/
+.env
+.env.*
+!.env.example
+frontend/.env.local
+*.pyc
