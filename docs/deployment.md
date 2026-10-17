@@ -7,11 +7,13 @@ Cloud Run and the React frontend is served by Firebase Hosting. This guide
 covers building and running the image locally, the verified production targets,
 and the automated CD workflow that deploys successful `main` commits.
 
+Live app: <https://docassist-prod-2026.web.app/>
+
 The production resources listed below were verified by read-only inspection with
-`gcloud` and the Firebase CLI (2026-10-17). The CD workflow is **implemented but
-has not yet been exercised end to end**; until a real successful run establishes
-it, treat the pipeline's behavior as untested and the deployment as manually
-established.
+`gcloud` and the Firebase CLI (2026-10-17). The CD workflow has completed
+successful runs for `main` (GitHub Actions runs `38981079907` and `38982494643`
+on 2026-10-16): the original deployment was established by hand, and subsequent
+deploys are automated.
 
 ## Scope and status
 

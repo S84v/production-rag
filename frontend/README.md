@@ -1,75 +1,49 @@
-# React + TypeScript + Vite
+# DocAssist frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The React single-page application for DocAssist. It is a static SPA: it calls the
+FastAPI backend's `POST /query` endpoint and renders the streamed answer with its
+sources.
 
-Currently, two official plugins are available:
+## Views
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+A small header switches between three client-side views (no router):
 
-## React Compiler
+- **Ask** — question composer, example questions, streamed answer, retrieved
+  sources, and timing metrics.
+- **About** — what DocAssist does and how answers are grounded.
+- **Project** — how it is built, technologies, evaluation, and limitations.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Configuration
 
-## Expanding the ESLint configuration
+| Variable | Purpose |
+| --- | --- |
+| `VITE_API_BASE_URL` | Base URL of the backend API (public; baked in at build time) |
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+When `VITE_API_BASE_URL` is unset, the app calls the relative `/query` path, and
+the Vite dev server proxies `/query` to `http://localhost:8000`
+(see `vite.config.ts`). For a production build where the frontend and API are on
+different origins, set `VITE_API_BASE_URL` to the API origin — for example
+`VITE_API_BASE_URL=https://api.example.com npm run build`. Vite inlines `VITE_*`
+variables at build time, so the app must be rebuilt when the value changes.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Scripts
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the Vite dev server (proxies `/query` to the backend) |
+| `npm run build` | Type-check (`tsc -b`) and build to `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run lint` | Run ESLint |
+| `npm run test` | Run the Vitest suite once |
+| `npm run test:watch` | Run Vitest in watch mode |
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Testing
 
-```
+Tests use **Vitest** with **jsdom** and **React Testing Library**, with the setup
+in `src/test/setup.ts`. Run them with `npm test`.
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+## Deployment
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+`npm run build` emits `frontend/dist`, which is published to Firebase Hosting
+(see `firebase.json`) by the repository's CD workflow. See the repository
+[`docs/deployment.md`](../docs/deployment.md) for the deployment details.

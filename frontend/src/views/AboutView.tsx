@@ -5,7 +5,7 @@ export function AboutView() {
         <p className="eyebrow">About</p>
         <h1>About DocAssist</h1>
         <p className="hero-lead">
-          Source-grounded Q&amp;A for technical documentation.
+          Source-grounded answers from technical documentation.
         </p>
       </header>
 
@@ -57,10 +57,9 @@ export function AboutView() {
       <section className="panel">
         <h2>What it indexes today</h2>
         <p>
-          The current corpus is the official FastAPI tutorial documentation.
-          The product is built to support other documentation collections, but
-          only the FastAPI collection is indexed and served in this
-          demonstration.
+          The current corpus is the official FastAPI documentation. The product
+          is built to support other documentation collections, but only the
+          FastAPI collection is indexed and served in this demonstration.
         </p>
       </section>
     </div>

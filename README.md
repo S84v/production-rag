@@ -1,1199 +1,272 @@
-# DocAssist
+<div align="center">
 
-<img src="frontend/public/favicon.svg" alt="" width="52" height="52" />
+  <img src="frontend/public/favicon.svg" alt="DocAssist" width="64" height="64" />
 
-**Source-grounded Q&A for technical documentation.**
+  <h1>DocAssist</h1>
 
-<!--![DocAssist frontend](docs/images/frontend.png)-->
+  <hr />
+
+  <p><em>Source-grounded answers from technical documentation.</em></p>
+
+  <p>
+    <a href="https://github.com/S84v/production-rag/actions/workflows/ci.yml">
+      <img src="https://img.shields.io/github/actions/workflow/status/S84v/production-rag/ci.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=CI" alt="CI">
+    </a>
+    <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12">
+    <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI">
+    <img src="https://img.shields.io/badge/PostgreSQL-17-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL 17">
+    <img src="https://img.shields.io/badge/Qdrant-vectors-DC244C?style=flat-square" alt="Qdrant">
+    <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React 19">
+    <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  </p>
+
+</div>
+
+DocAssist is a production-oriented Retrieval-Augmented Generation (RAG) service
+that answers natural-language questions about the **official FastAPI
+documentation** and returns the documentation sources behind every answer.
+**▶ [Try DocAssist — live demo](https://docassist-prod-2026.web.app/)**
+
 ![DocAssist answering a question with streaming output](docs/images/streaming.gif)
 
-DocAssist is a production-oriented Retrieval-Augmented Generation (RAG) system built with FastAPI, PostgreSQL, Qdrant, Sentence Transformers, and DeepSeek. It answers natural-language questions about technical documentation and returns the documentation sources behind each answer.
-
-The current corpus is the official FastAPI tutorial documentation. The repository keeps the name `production-rag`; **DocAssist** is how the product is presented to users.
-
-The project focuses on the engineering problems that appear when moving beyond a basic RAG prototype:
-
-* structure-aware document ingestion
-* idempotent document processing
-* document versioning
-* separation of metadata and vector storage
-* PostgreSQL hydration after vector retrieval
-* asynchronous LLM generation
-* streaming API responses
-* application lifecycle management
-* retrieval and generation evaluation
-* OpenTelemetry instrumentation
-* automated testing and linting
-
-The goal is not to build a large distributed platform. The goal is to demonstrate a clean, testable RAG architecture with sensible production-oriented engineering decisions.
-
 ---
+
+## What DocAssist does
+
+DocAssist answers questions from an indexed documentation corpus instead of from
+general model knowledge. It retrieves the most relevant passages, asks a language
+model to answer using **only** that retrieved context, and returns the passages it
+used so the answer can be checked against the original text. When the retrieved
+context does not contain the answer, the model is expected to say so.
+
+The current corpus is the **official FastAPI documentation** — 135 prepared
+documents covering the tutorial, advanced topics, deployment, how-to guides, and
+reference pages — pinned to a specific revision for reproducibility. See
+[`docs/corpus.md`](docs/corpus.md).
+
+The architecture supports multiple collections, but **only the `fastapi`
+collection is currently indexed and served**, and the public API only serves
+collections on a fixed allowlist. There is no document upload and no collection
+picker in the interface.
 
 ## Architecture
 
-The system processes a Markdown corpus through ingestion, chunking, embedding, vector storage, retrieval, metadata hydration, and LLM generation.
-
 ```text
-                         ┌──────────────────────┐
-                         │      Markdown        │
-                         │       Corpus         │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │  FilesystemSource    │
-                         │  SHA-256 hashing     │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │   MarkdownChunker    │
-                         │ headings + code      │
-                         │ structure metadata   │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │     PostgreSQL       │
-                         │                      │
-                         │ collections          │
-                         │ documents            │
-                         │ versions             │
-                         │ chunks               │
-                         │ embedding metadata   │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │   EmbeddingService   │
-                         │ BGE-small-en-v1.5    │
-                         │ 384 dimensions       │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │       Qdrant         │
-                         │   vector storage     │
-                         └──────────┬───────────┘
-                                    │
-                              query │
-                                    ▼
-┌──────────────┐          ┌──────────────────────┐
-│    Client    │ ───────► │  RetrievalService    │
-└──────────────┘          │                      │
-                          │ query embedding      │
-                          │ Qdrant search        │
-                          │ PostgreSQL hydration │
-                          └──────────┬───────────┘
-                                     │
-                                     ▼
-                          ┌──────────────────────┐
-                          │     RAGService       │
-                          │                      │
-                          │ retrieval            │
-                          │ context construction │
-                          │ LLM generation       │
-                          └──────────┬───────────┘
-                                     │
-                                     ▼
-                          ┌──────────────────────┐
-                          │     DeepSeek API     │
-                          │  async streaming     │
-                          └──────────┬───────────┘
-                                     │
-                                     ▼
-                          ┌──────────────────────┐
-                          │    FastAPI /query    │
-                          │      NDJSON          │
-                          └──────────────────────┘
+Markdown corpus → ingestion (hashing, structure-aware chunking) → PostgreSQL
+                                   │
+                                   ▼
+                     BGE-small embeddings → Qdrant (vectors)
+
+Query → embed → Qdrant search → PostgreSQL hydration → context → DeepSeek
+                                                              → NDJSON stream
 ```
 
-### Persistence boundary
+PostgreSQL is the authoritative store for document metadata and chunk text;
+Qdrant stores the vectors used for similarity search. Qdrant payloads are not
+treated as the metadata source of truth.
 
-PostgreSQL is the authoritative store for application metadata.
-
-Qdrant is responsible for vector similarity search.
-
-The application uses the following identity relationships:
-
-```text
-Application Collection → Qdrant Collection
-
-Chunk                  → Embedding
-
-Embedding.id           → Qdrant point ID
-```
-
-Qdrant search returns embedding IDs and similarity scores. The application then hydrates the corresponding chunk and document metadata from PostgreSQL.
-
-Qdrant payloads are therefore not treated as the authoritative metadata store.
-
----
+The full component map, request flow, ingestion pipeline, and lifecycle are in
+[`docs/architecture.md`](docs/architecture.md).
 
 ## Tech stack
 
-| Area                | Technology                             |
-| ------------------- | -------------------------------------- |
-| Language            | Python 3.12+                           |
-| API                 | FastAPI                                |
-| Database            | PostgreSQL 17                          |
-| Vector database     | Qdrant                                 |
-| Infrastructure      | Docker Compose                         |
-| ORM                 | SQLAlchemy 2                           |
-| Migrations          | Alembic                                |
-| Embeddings          | `BAAI/bge-small-en-v1.5`               |
-| Embedding dimension | 384                                    |
-| LLM                 | DeepSeek API                           |
-| LLM client          | OpenAI Python SDK                      |
-| Markdown parsing    | markdown-it-py                         |
-| Evaluation          | Custom retrieval evaluation + DeepEval |
-| Observability       | OpenTelemetry                          |
-| Web frontend        | React + TypeScript + Vite              |
-| Frontend testing    | Vitest + React Testing Library         |
-| Testing             | pytest                                 |
-| Linting             | Ruff                                   |
-| Package management  | uv                                     |
-
-Redis is included in the development infrastructure, but it is not currently part of the RAG request path.
-
----
-
-## Core engineering features
-
-### Structure-aware Markdown chunking
-
-Markdown is parsed structurally using `markdown-it-py` rather than being split using arbitrary character boundaries.
-
-Chunks preserve structural information including:
-
-* heading hierarchy
-* heading paths
-* code blocks
-* chunk ordering
-* document/version relationships
-
-The default maximum chunk size is approximately 4,000 characters.
-
-This is particularly useful for technical documentation where headings and code examples contribute significant retrieval context.
-
----
-
-### Idempotent ingestion
-
-Filesystem documents are identified using SHA-256 content hashes.
-
-Re-ingesting an unchanged document does not create unnecessary new document versions.
-
-The ingestion flow is:
-
-```text
-FilesystemSource
-       ↓
-BatchIngestionService
-       ↓
-DocumentIngestionService
-       ↓
-PostgreSQL
-       ↓
-EmbeddingService
-       ↓
-Qdrant
-```
-
-The CLI reports:
-
-* documents discovered
-* new documents
-* chunks processed
-* embeddings persisted
-
----
-
-### Versioned document model
-
-The persistence model separates document identity from individual document versions.
-
-```text
-Collection
-    │
-    └── Document
-          │
-          └── DocumentVersion
-                │
-                └── Chunk
-                      │
-                      └── Embedding
-```
-
-This allows the system to track document content independently from the stable document identity.
-
----
-
-### Separate embedding entity
-
-Embeddings are modeled as their own persistence entity rather than storing vectors directly with chunks.
-
-An embedding records:
-
-* chunk identity
-* model name
-* model version
-* vector dimensions
-
-Embedding identity is independent from chunk identity.
-
-The current embedding model is:
-
-```text
-BAAI/bge-small-en-v1.5
-Model version: 1
-Dimensions: 384
-Distance: Cosine
-```
-
-The actual vectors are stored in Qdrant.
-
----
-
-### Retrieval with PostgreSQL hydration
-
-The retrieval path is:
-
-```text
-User query
-    ↓
-BGE query embedding
-    ↓
-Qdrant similarity search
-    ↓
-Embedding IDs + similarity scores
-    ↓
-PostgreSQL lookup
-    ↓
-Chunk + source metadata
-    ↓
-Ranked RetrievalResult objects
-```
-
-Only the requested number of vector results is retrieved.
-
-Results that cannot be hydrated from PostgreSQL are excluded from the final retrieval result.
-
----
-
-### End-to-end RAG generation
-
-`RAGService` composes retrieval and LLM generation.
-
-The service:
-
-1. retrieves relevant chunks
-2. records retrieval latency
-3. exposes retrieved sources
-4. builds the retrieved context
-5. sends the question and context to the LLM
-6. streams generated text
-7. reports total RAG latency
-
-The generation instructions explicitly require the model to use only the retrieved context and to state when the context does not contain enough information.
-
----
-
-### Streaming responses
-
-The FastAPI `/query` endpoint returns:
-
-```text
-application/x-ndjson
-```
-
-The stream contains structured events for:
-
-* retrieved sources
-* generated text
-* completion/timing information
-* terminal errors (a failed or incomplete generation)
-
-A response is conceptually structured as:
-
-```json
-{"type":"sources","sources":[...]}
-{"type":"text","text":"..."}
-{"type":"complete","retrieval_time_ms":...,"total_time_ms":...}
-```
-
-The stream begins with a `sources` event, followed by zero or more incremental `text` events. It ends with exactly one terminal event: `complete` on success, or `error` on a failed or incomplete generation, for example `{"type":"error","code":"generation_failed","message":"..."}`. Provider error details are never included in the response.
-
----
-
-### Request validation
-
-The API validates the request before starting the streaming response.
-
-Current behavior includes:
-
-| Condition                     | Response                 |
-| ----------------------------- | ------------------------ |
-| Valid query                   | `200` streaming response |
-| Empty query                   | `422`                    |
-| Invalid limit                 | `422`                    |
-| Query exceeds 2000 chars      | `422`                    |
-| Collection exceeds 128 chars  | `422`                    |
-| Missing required field        | `422`                    |
-| Malformed JSON                | `422`                    |
-| Nonexistent Qdrant collection | `404`                    |
-| Disallowed collection         | `404`                    |
-| Rate limit exceeded           | `429` (+ `Retry-After`)  |
-
-Collection existence is checked before the `StreamingResponse` is created. This prevents an invalid collection from producing a broken streaming response.
-
-The public API only serves collections on a fixed allowlist (`ALLOWED_COLLECTIONS`, default `fastapi`). The allowlist is checked before any Qdrant lookup, and disallowed and nonexistent collections both return the identical `404` message so the API does not reveal which collections exist.
-
-Field length limits are enforced by the request schema: `query` is capped at 2000 characters and `collection` at 128 characters. Oversized values are rejected with `422` before any collection lookup or generation.
-
-The server also bounds cost independently of the client. Generated output is capped at `MAX_OUTPUT_TOKENS` tokens per answer (default 1024), and the retrieved context sent to the model is capped at `MAX_CONTEXT_CHARACTERS` characters (default 12000). Chunks are included as whole chunks in retrieval-rank order until the budget is reached. The `sources` event lists exactly the chunks that were included in the prompt, so unused chunks are never presented as supporting evidence.
-
-### Rate limiting
-
-`POST /query` is rate limited per client: 10 requests per 60-second window by default, configurable with `RATE_LIMIT_REQUESTS`. The limit is enforced before collection lookup and generation, so an over-limit request never reaches Qdrant or the model. Exceeding it returns `429` with a `Retry-After` header (whole seconds) and a clear message. `GET /health` is not rate limited.
-
-Client identity defaults to the direct TCP peer (`request.client.host`), which cannot be spoofed through request headers.
-
-The limiter is **best-effort abuse control, not a guaranteed spending cap**. Its state is held in memory, per process:
-
-* Each Cloud Run instance (and each uvicorn worker) enforces its own counter, so the effective ceiling scales with the number of instances and no global limit is shared.
-* Behind a proxy the direct peer is the proxy address, so all users share one bucket and the limit becomes effectively per instance rather than per end user.
-* The window is fixed per client and anchored at the client's first request; a burst of up to roughly twice the limit is possible across a window boundary.
-* Tracked state is bounded and expired entries are pruned.
-
-#### Trusted forwarded client IP (Cloud Run)
-
-Setting `RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR=true` makes the limiter read the client IP from the trusted suffix of the `X-Forwarded-For` chain instead of the direct peer. **Enable this only for verified direct Cloud Run ingress.** The proxy must append the real client IP, making the last entry trustworthy; earlier, client-supplied entries are ignored and the candidate must parse as an IP address, otherwise the limiter falls back to the direct peer. Do not enable it for an unverified or multi-hop proxy/CDN topology, where trusting the chain could allow spoofing.
-
----
-
-### Application lifecycle management
-
-The FastAPI application creates a single `RAGService` during application startup.
-
-```text
-Application startup
-        ↓
-RAGService
-        ↓
-RetrievalService
-        ↓
-Qdrant client
-
-        +
-
-LLMService
-        ↓
-DeepSeek client
-```
-
-These resources are explicitly closed during application shutdown.
-
-This avoids creating a new long-lived client for every API request.
-
----
-
-### OpenTelemetry instrumentation
-
-FastAPI is instrumented with OpenTelemetry.
-
-The RAG pipeline also creates a dedicated `rag.generate` span.
-
-The current RAG span records attributes including:
-
-* collection
-* retrieval limit
-* retrieved chunk count
-* context chunk count
-* retrieval latency
-* total RAG latency
-
-The current development configuration exports spans through the OpenTelemetry console exporter.
-
----
+| Area | Technology |
+| --- | --- |
+| Language | Python 3.12+ |
+| API | FastAPI |
+| Database | PostgreSQL 17 |
+| Vector database | Qdrant |
+| ORM / migrations | SQLAlchemy 2 / Alembic |
+| Embeddings | `BAAI/bge-small-en-v1.5` (384 dims, cosine) |
+| LLM | DeepSeek (OpenAI Python SDK client) |
+| Markdown parsing | markdown-it-py |
+| Observability | OpenTelemetry |
+| Web frontend | React 19 + TypeScript + Vite |
+| Frontend testing | Vitest + React Testing Library |
+| Backend testing / linting | pytest / Ruff |
+| Package management | uv |
+
+Redis is included in the local Docker Compose stack but is not part of the RAG
+request path.
+
+## Key engineering decisions
+
+| Decision | ADR |
+| --- | --- |
+| Collections map to independent Qdrant collections | [ADR-001](docs/adr/001-multi-collection-workspaces.md) |
+| Embeddings modeled as a separate domain entity | [ADR-002](docs/adr/002-embeddings-as-separate-domain-entity.md) |
+| Structure-aware Markdown ingestion | [ADR-003](docs/adr/003-structure-aware-markdown-ingestion.md) |
+| Selective (not blanket) use of LangChain | [ADR-004](docs/adr/004-selective-use-of-langchain.md) |
+| Public API collection allowlist | [ADR-005](docs/adr/005-public-api-collection-allowlist.md) |
+| Corpus preparation and vector-store consistency | [ADR-006](docs/adr/006-corpus-preparation-and-vector-store-consistency.md) |
+
+The records are indexed in [`docs/adr/`](docs/adr/README.md).
+
+## How a query works
+
+1. The client sends a question to `POST /query`, which validates the request and
+   checks the collection allowlist.
+2. The query is embedded with `BAAI/bge-small-en-v1.5`.
+3. Qdrant returns the nearest vectors; the corresponding chunks and metadata are
+   hydrated from PostgreSQL (latest document version only).
+4. The retrieved chunks are added to the prompt within a bounded context budget,
+   and DeepSeek generates the answer.
+5. The response streams back as newline-delimited JSON: the `sources` event,
+   incremental `text` events, and one terminal `complete` or `error` event.
+
+The precise contract — request fields, status codes, rate limiting, and CORS — is
+in [`docs/api.md`](docs/api.md).
 
 ## Getting started
 
-### Requirements
-
-Install:
-
-* Python 3.12+
-* uv
-* Docker
-* Docker Compose
-
-Clone the repository and enter the project directory.
-
-Install dependencies:
+Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Docker, and Docker
+Compose.
 
 ```bash
+# 1. Install dependencies and create the local environment file
 uv sync
-```
+cp .env.example .env          # set DEEPSEEK_API_KEY for /query
 
-#### CPU-only PyTorch (optional)
-
-The project exposes a `cpu` extra that resolves PyTorch from the official CPU-only index (`https://download.pytorch.org/whl/cpu`) instead of the default PyPI build:
-
-```bash
-uv sync --extra cpu
-```
-
-Use it for CPU-only environments such as containers and CI (CI installs with `--extra cpu`). It pins the same PyTorch version as the default, but the installed wheel carries a `+cpu` local version and pulls no CUDA libraries, so it is not byte-for-byte identical to the default Linux wheel. A `gpu` extra is provided as the counterpart that keeps the default PyPI build; `cpu` and `gpu` are mutually exclusive, and a plain `uv sync` keeps the existing default PyPI selection.
-
-### Container image
-
-A multi-stage `Dockerfile` builds a Linux AMD64 backend image using Python 3.12, the CPU-only PyTorch extra, and the embedding model baked in at a pinned revision. See `docs/deployment.md` for building, running, configuration, the separate migration procedure, and troubleshooting.
-
----
-
-### Environment configuration
-
-Create the local environment file:
-
-```bash
-cp .env.example .env
-```
-
-The application uses local services by default:
-
-```text
-PostgreSQL → localhost:5432
-Qdrant     → localhost:6333
-```
-
-The PostgreSQL connection defaults to the `POSTGRES_*` settings (the Docker Compose instance). To use a hosted database instead, set `DATABASE_URL`, which takes precedence over `POSTGRES_*`:
-
-```text
-DATABASE_URL=postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
-```
-
-The URL is normalized for the asyncpg driver: the `postgres://` and `postgresql://` schemes become `postgresql+asyncpg`, and the libpq `sslmode` parameter is translated to asyncpg's `ssl` (an explicit `ssl` is preserved when both are present). Neon connection strings used with asyncpg must omit `channel_binding`: the default Neon string can include `channel_binding=require`, but asyncpg does not support that parameter, so the application raises a configuration error rather than silently dropping the requested authentication setting. Remove `channel_binding=require` and keep `sslmode=require` for TLS. Only connection parameters supported by asyncpg may be used; other libpq-only parameters are not translated. Never commit real credentials.
-
-The Qdrant connection defaults to `QDRANT_HOST`/`QDRANT_PORT` (the Docker Compose instance). To use a hosted endpoint, set `QDRANT_URL`, which takes precedence; for Qdrant Cloud also set `QDRANT_API_KEY`:
-
-```text
-QDRANT_URL=https://YOUR-CLUSTER.cloud.qdrant.io:6333
-QDRANT_API_KEY=YOUR_API_KEY
-```
-
-`QDRANT_URL` is passed to the client as `url`, and `QDRANT_API_KEY` is attached only when `QDRANT_URL` is set and the key is non-blank; the local `QDRANT_HOST`/`QDRANT_PORT` connection stays unauthenticated (the API key is ignored in local mode). TLS is derived from the URL's `https://` scheme, and the port is taken from the URL, falling back to the client default `6333` when omitted — include it explicitly when it differs. Never commit real endpoints or API keys.
-
-The DeepSeek API key should be configured locally.
-
-The public API only serves collections listed in `ALLOWED_COLLECTIONS` (comma-separated, default `fastapi`). Requests for any other collection return `404`, whether or not the collection exists in Qdrant. An explicitly empty value denies all collections.
-
-Do not commit API keys or other secrets to the repository.
-
-The DeepSeek settings currently include:
-
-```text
-DEEPSEEK_API_KEY
-DEEPSEEK_BASE_URL
-DEEPSEEK_MODEL
-DEEPSEEK_TIMEOUT
-```
-
-The current default model configured by the application is:
-
-```text
-deepseek-v4-flash
-```
-
-Cost-control settings:
-
-```text
-MAX_OUTPUT_TOKENS      (default 1024)
-MAX_CONTEXT_CHARACTERS (default 12000)
-```
-
-`MAX_OUTPUT_TOKENS` bounds the number of tokens generated per answer and is passed to the DeepSeek Responses API as `max_output_tokens`. It also covers reasoning tokens, but reasoning is disabled, so it bounds the visible output. `MAX_CONTEXT_CHARACTERS` bounds the total length of the chunk content included in the retrieved context. Both must be positive integers.
-
-Rate-limiting settings:
-
-```text
-RATE_LIMIT_REQUESTS                              (default 10)
-RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR       (default false)
-```
-
-`RATE_LIMIT_REQUESTS` is the number of `POST /query` requests allowed per client per 60-second window and must be a positive integer. `RATE_LIMIT_TRUST_CLOUD_RUN_X_FORWARDED_FOR` controls client identification; leave it `false` unless you have verified the Cloud Run header chain (see [Rate limiting](#rate-limiting)).
-
-Cross-origin and frontend settings:
-
-```text
-CORS_ALLOWED_ORIGINS     # comma-separated exact browser origins; empty disables CORS
-VITE_API_BASE_URL        # frontend build-time API base URL (public)
-```
-
-`CORS_ALLOWED_ORIGINS` lists the browser origins allowed to call the API from a different origin. Each entry is an **exact** origin in the form `scheme://host[:port]` — no path and no trailing slash. There is no wildcard, substring, or regex matching, and `*` is rejected as a configuration error. An empty value (the local default) disables CORS entirely; local development uses the Vite proxy and is same-origin. CORS is **not authentication** and does not replace the API's abuse controls (request limits, collection allowlist, and rate limiting); it is enforced by the browser, not the server.
-
-`VITE_API_BASE_URL` is a **public frontend variable, never a secret**. When unset (the local default), the frontend calls the relative `/query` path, which the Vite dev server proxies to `http://localhost:8000`. Set it for a production build where the frontend and API are on different origins, for example `https://api.example.com`. Vite inlines `VITE_*` variables at **build time**, so the frontend must be rebuilt when the value changes.
-
----
-
-### Start infrastructure
-
-Start the development infrastructure:
-
-```bash
+# 2. Start PostgreSQL and Qdrant
 docker compose up -d
-```
 
-Check service status:
-
-```bash
-docker compose ps
-```
-
-The Compose configuration currently provides:
-
-* PostgreSQL
-* Qdrant
-* Redis
-
-Redis is available for future use but is not currently required by the RAG request path.
-
----
-
-### Run database migrations
-
-Apply the current Alembic migrations:
-
-```bash
+# 3. Apply database migrations
 uv run alembic upgrade head
-```
 
----
-
-## Ingestion
-
-The project provides a CLI for ingesting Markdown documentation.
-
-For example:
-
-```bash
-uv run production-rag ingest \
-  --path data/raw/fastapi \
-  --collection fastapi
-```
-
-The ingestion command:
-
-1. creates the application collection if necessary
-2. discovers Markdown files recursively
-3. calculates SHA-256 content hashes
-4. creates or reuses document records
-5. creates document versions when required
-6. chunks Markdown documents
-7. generates embeddings
-8. persists embedding metadata
-9. creates the corresponding Qdrant collection if necessary
-10. upserts vectors into Qdrant
-
-The embedding service uses:
-
-```text
-BAAI/bge-small-en-v1.5
-384 dimensions
-Cosine similarity
-```
-
----
-
-## Querying
-
-### CLI
-
-The RAG system can be queried directly from the command line:
-
-```bash
-uv run production-rag query \
-  "How do I create a FastAPI application?" \
-  --collection fastapi \
-  --limit 5
-```
-
-The CLI streams the generated answer and then prints the retrieved sources.
-
-Example source information includes:
-
-```text
-- filesystem://path-params.md (chunk 17, similarity: 0.863)
-```
-
-### Corpus preparation
-
-The pinned documentation is acquired and prepared with a single command:
-
-```bash
+# 4. Acquire and prepare the pinned FastAPI corpus, then ingest it
 ./scripts/acquire_corpus.sh
-```
+uv run production-rag ingest --path data/raw/fastapi --collection fastapi
 
-This clones the pinned upstream revision and runs `production-rag prepare-corpus`,
-which expands MkDocs include directives so the code examples are part of the
-corpus. See `docs/corpus.md` for the scope, exclusions, and layout rules.
-
-### Vector-store reconciliation
-
-Vectors live in Qdrant while PostgreSQL is authoritative for which vectors
-should exist. Drift is reported with a read-only dry run:
-
-```bash
-uv run production-rag reconcile --collection fastapi
-```
-
-The report separates unbacked, superseded-version, inactive-model, and
-foreign-collection points from authoritative vectors, and lists authoritative
-vectors that are missing from Qdrant. Only with `--apply` does it delete points
-that are proven non-authoritative, scoped to the named collection; it never
-deletes PostgreSQL records and never touches another collection. Missing vectors
-are repaired by re-running ingestion, not by reconciliation.
-
----
-
-### API
-
-Start the FastAPI application:
-
-```bash
+# 5. Run the API
 uv run uvicorn production_rag.main:app --reload
 ```
 
-Health check:
-
-```bash
-curl http://localhost:8000/health
-```
-
-Expected response:
-
-```json
-{"status":"ok"}
-```
-
-Query the RAG endpoint:
+Query it:
 
 ```bash
 curl -N -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
-  -d '{
-    "query": "How do I create a FastAPI application?",
-    "collection": "fastapi",
-    "limit": 5
-  }'
+  -d '{"query":"How do I create a FastAPI application?","collection":"fastapi","limit":5}'
 ```
 
-The endpoint returns an NDJSON stream.
+Configuration (database, Qdrant, DeepSeek, cost and rate limits, CORS, and the
+frontend API URL) is documented in [`docs/configuration.md`](docs/configuration.md).
+For CPU-only environments, `uv sync --extra cpu` resolves PyTorch from the
+official CPU-only index.
 
----
-
-## Evaluation
-
-The project currently evaluates both retrieval and end-to-end generation.
-
-The evaluation corpus is the FastAPI documentation.
-
-The dataset contains:
-
-```text
-29 evaluation examples
-```
-
-24 of these come from the original tutorial subset; the remaining 5 add coverage
-for advanced, deployment, how-to, and testing pages.
-
-### Retrieval evaluation
-
-The current retrieval evaluation is **chunk-level**.
-
-Each evaluation example lists one or more **content anchors** under
-`relevant_chunks`:
-
-```json
-{ "source_uri": "filesystem://path-params.md", "snippet": "<verbatim excerpt>" }
-```
-
-Anchors are resolved to the current chunk IDs at evaluation time by matching the
-whitespace-normalized snippet against chunks from the same `source_uri`. Because
-labels reference content rather than runtime `uuid4` chunk IDs (or the
-`chunk_index`, which shifts on re-chunking), the dataset is reproducible across
-clean ingestion and corpus/chunking changes.
-
-Resolution targets the latest document version of each document. A snippet that
-matches **no** current chunk (missing) or **more than one** chunk (ambiguous)
-raises an actionable error naming the example and anchor instead of silently
-dropping a label or choosing an arbitrary match.
-
-Retrieved chunks are compared against the resolved relevant chunk IDs.
-
-The evaluation reports:
-
-* Precision@K — chunk level
-* Recall@K — chunk level
-* Hit@K — chunk level
-* MRR
-
-The implementation explicitly reports these metrics as:
-
-```text
-Precision@K Chunks
-Recall@K Chunks
-Hit@K Chunks
-MRR
-```
-
-### Current retrieval baseline
-
-The current baseline is the **anchor-based** retrieval evaluation (2026-10-16)
-over the 29-example dataset (`data/evaluation/fastapi.json`), with no reranker:
-
-|  K | Precision@K | Recall@K | Hit@K |    MRR |
-| -: | ----------: | -------: | ----: | -----: |
-|  5 |      0.1310 |   0.5977 | 0.6552 | 0.5316 |
-| 10 |      0.0862 |   0.7241 | 0.8276 | 0.5595 |
-| 20 |      0.0500 |   0.8046 | 0.8966 | 0.5650 |
-
-K = 5 is the application's current default retrieval depth; K = 10 and K = 20 are
-diagnostic candidate-depth measurements that the application does not use. The
-recorded artifact also states the corpus revision, embedding model, vector counts,
-and that no reranker was applied:
-
-```text
-data/evaluation/results/fastapi-retrieval-baseline-2026-10-16.json
-```
-
-#### Legacy baseline (non-reproducible)
-
-The metrics below are a **legacy, non-reproducible baseline** produced with the
-original UUID-based labels. They are preserved for historical reference only and
-must not be compared against results from the anchor-based dataset.
-
-|  K | Precision@K Chunks | Recall@K Chunks | Hit@K Chunks |    MRR |
-| -: | -----------------: | --------------: | -----------: | -----: |
-|  1 |             0.4167 |          0.3264 |       0.4167 | 0.4167 |
-|  3 |             0.1806 |          0.4028 |       0.4583 | 0.4375 |
-|  5 |             0.1500 |          0.5417 |       0.6250 | 0.4750 |
-| 10 |             0.0833 |          0.6250 |       0.7083 | 0.4889 |
-| 20 |             0.0521 |          0.7569 |       0.8333 | 0.4991 |
-
-The baseline and labeling methodology are documented in:
-
-```text
-docs/evaluation/retrieval_baseline.md
-```
-
-The evaluation dataset is:
-
-```text
-data/evaluation/fastapi.json
-```
-
----
-
-### Generation evaluation
-
-The generation evaluation runs the actual end-to-end RAG pipeline against the evaluation dataset.
-
-For each example it records:
-
-* question
-* reference answer
-* generated answer
-* retrieved sources
-* retrieval latency
-* total RAG latency
-
-The generated results are written to:
-
-```text
-docs/evaluation/generation_results.md
-```
-
-The current artifact contains 24 evaluation examples (recorded before the corpus expansion) and is intended for manual comparison of generated answers against the reference answers and retrieved context.
-
-DeepEval is included as the generation-evaluation dependency for further automated evaluation.
-
-#### Failed and incomplete generations
-
-The RAG stream ends with exactly one terminal event: `complete` on success, or `error` on a failed or incomplete generation. The evaluators fail an example whenever either of the following occurs:
-
-* a terminal `error` event is received, or
-* the stream ends without any terminal event (an interrupted stream; reported as `terminal_event_missing`).
-
-Individual failures are recorded per example and evaluation continues, so one failed generation does not abort the run. A failed example is marked with its error code and message and is never presented as a successful result:
-
-* Retrieval and total RAG timing are reported only for generations that complete; a failed example reports no timing.
-* `docs/evaluation/generation_results.md` counts failed examples and, for each failure, shows the error details instead of a generated answer, timing, or source count.
-* Examples with a failed or incomplete generation are excluded from DeepEval scoring, so a partial answer is never turned into a test case or scored as a valid response. If no example completes successfully, DeepEval is skipped with a clear message.
-
----
+The CLI also supports `production-rag query`, `production-rag prepare-corpus`,
+and `production-rag reconcile`. `reconcile` is a read-only dry run by default and
+reports drift between PostgreSQL (authoritative) and Qdrant; `--apply` deletes
+only points that are proven non-authoritative within the named collection.
 
 ## Testing
 
-Run the complete test suite:
+```bash
+uv run pytest -q                 # full suite (needs PostgreSQL, Qdrant, cached model)
+uv run pytest -m "not integration"   # service-free tests only (as CI runs)
+uv run ruff check . && uv run ruff format --check .
+```
+
+Tests that need live PostgreSQL, Qdrant, or the cached embedding model are marked
+`integration`. Tests that read the prepared corpus require
+`./scripts/acquire_corpus.sh` first.
+
+The frontend has its own checks:
 
 ```bash
-uv run pytest -q
+cd frontend && npm ci && npm run lint && npm run test && npm run build
 ```
 
-For environments where OpenTelemetry console output interacts with pytest's output capture, the suite can also be run with capture disabled:
+## Evaluation
 
-```bash
-uv run pytest -q -s
-```
+DocAssist measures retrieval quality with chunk-level Precision@K, Recall@K,
+Hit@K, and MRR against a 29-example dataset whose labels are **content anchors**
+(verbatim excerpts tied to a source document) rather than runtime chunk IDs, so
+the dataset stays reproducible across re-chunking.
 
-Run Ruff:
+The current reproducible baseline is the **anchor-based retrieval baseline
+recorded on 2026-10-16**, with no reranker. At the application's default depth
+(`K = 5`):
 
-```bash
-uv run ruff check .
-```
+| Retrieval depth | Precision | Recall | Hit rate | MRR |
+| --------------: | --------: | -----: | -------: | --: |
+| 5 | 0.1310 | 0.5977 | 0.6552 | 0.5316 |
 
-The project is configured for:
+`K = 10` and `K = 20` are diagnostic candidate-depth measurements that the
+application does not use.
 
-```text
-Python 3.12
-Ruff line length: 88
-pytest asyncio mode: auto
-```
+The generation/answer evaluation artifacts in the repository were recorded
+**before the corpus expansion** and cover **24** examples; they are historical and
+must not be read as current metrics. Everything is indexed, with provenance and
+run commands, in [`docs/evaluation/`](docs/evaluation/README.md).
 
-Tests that require live PostgreSQL, Qdrant, or the embedding model cache are
-marked `integration` and excluded by default in CI:
+## Deployment
 
-```bash
-uv run pytest -m "not integration"
-```
+DocAssist is deployed as a static frontend on Firebase Hosting with a FastAPI
+backend on Google Cloud Run, backed by managed PostgreSQL (Neon), Qdrant Cloud,
+and the DeepSeek API:
 
-Run them explicitly once the required services are available:
+- Live app: **<https://docassist-prod-2026.web.app/>**
+- Backend health: `GET /health` returns `{"status":"ok"}`
 
-```bash
-uv run pytest -m integration
-```
+`.github/workflows/cd.yml` deploys a commit after the `CI` workflow succeeds on
+`main`: it builds a commit-SHA image, runs `alembic upgrade head` as a separate
+Cloud Run job (a migration failure blocks the deploy), deploys the new revision
+with no traffic and promotes it only after health checks pass, then stages and
+verifies the frontend before promoting it. Authentication uses GitHub OIDC with
+Workload Identity Federation (no long-lived keys). The pipeline has completed
+successful runs for `main`; the original deployment was established by hand, and
+subsequent deploys are automated.
 
-Prerequisites depend on the test:
+Production targets, required configuration, IAM, and rollback are documented in
+[`docs/deployment.md`](docs/deployment.md).
 
-* PostgreSQL must be available for the database, model, repository, retrieval,
-  and service integration tests.
-* Qdrant must be available for the retrieval and Qdrant integration tests.
-* Tests that compute real embeddings use the configured model
-  (`BAAI/bge-small-en-v1.5`), which is loaded with `local_files_only=True`, so
-  the model must already be cached locally; the tests do not download it.
+## Limitations
 
-PostgreSQL and Qdrant are provided by Docker Compose.
-
-The chunker, anchor-resolution, and corpus-contract regression tests read the
-prepared corpus from `data/raw/fastapi/`, which is not tracked in Git. Acquire
-and prepare it reproducibly before running those tests (this requires `git` and
-the project environment):
-
-```bash
-./scripts/acquire_corpus.sh
-```
-
-The test suite covers the major vertical slices of the application, including:
-
-* application configuration
-* Markdown chunking
-* filesystem ingestion
-* document ingestion
-* document versioning
-* repositories
-* embeddings
-* Qdrant integration boundary
-* retrieval
-* LLM service
-* RAG orchestration
-* API behavior
-* request validation
-* collection validation
-* application lifecycle
-* evaluation logic
-
----
-
-## Continuous integration
-
-`.github/workflows/ci.yml` runs on pushes to `main` and on pull requests:
-
-* **backend** — `uv sync --frozen`, `ruff check`, `ruff format --check`, acquisition and preparation of the pinned corpus, then `pytest -m "not integration"` (service-free tests only).
-* **frontend** — `npm ci`, `npm run lint`, `npm run test`, `npm run build`.
-
-CI uses the pinned `uv` version and does not require PostgreSQL, Qdrant, cloud credentials, or paid API calls.
-
----
-
-## Continuous deployment
-
-`.github/workflows/cd.yml` deploys a commit to the existing production
-environment (Cloud Run + Firebase Hosting). It does not run tests: it starts
-only after the `CI` workflow completes successfully for a push to `main`, and it
-deploys exactly the commit CI ran on. A read-only preflight skips any successful
-CI run whose commit is no longer the head of `main`, so an out-of-order run
-cannot overwrite a newer deployment. Pull requests and forks are excluded, and
-authentication uses GitHub OIDC with Google Cloud Workload Identity Federation —
-no long-lived service-account keys.
-
-The pipeline builds the commit-SHA image, runs `alembic upgrade head` as a
-separate Cloud Run job (a migration failure blocks the deploy), deploys the new
-revision with no traffic and promotes it only after health checks pass, then
-builds the frontend with the deployed API URL, stages it on a temporary Firebase
-Hosting preview channel, verifies the built bundle, and promotes that version to
-the live channel. No GitHub secrets are required once WIF is configured.
-
-See `docs/deployment.md` for the verified production targets, the required
-GitHub variables, the IAM/Workload Identity Federation setup, and the rollback
-procedure.
-
----
+- Only the `fastapi` collection is indexed and served; other corpora are not
+  available, and there is no upload or collection-selection UI.
+- The request rate limit is held in memory per process, so it is not a global
+  limit across instances (see [`docs/api.md`](docs/api.md)).
+- The embedding model is loaded lazily and cached per process, so the first query
+  after a cold start pays the load cost, and the model must be available locally
+  (the container bakes it in).
+- Hosted database and vector-store endpoints are configurable, but account,
+  quota, and billing state are not verified by the application.
+- Retrieval uses a single bi-encoder ranking with no reranker.
 
 ## Project structure
 
 ```text
 production-rag/
-├── alembic/
-│   ├── env.py
-│   └── versions/
-│       ├── 475d329a606c_create_initial_schema.py
-│       └── 4d9a0c20621f_remove_embedding_vector_key.py
-│
+├── .github/workflows/     CI and CD workflows
+├── alembic/               Database migrations
 ├── data/
-│   ├── evaluation/
-│   │   ├── fastapi.json
-│   │   └── results/
-│   │       ├── fastapi-answer-baseline-2026-09-01.json
-│   │       └── fastapi-retrieval-baseline-2026-10-16.json
-│   ├── raw/
-│   │   └── fastapi/
-│   └── tmp/
-│
-├── docs/
-│   ├── adr/
-│   │   ├── 001-multi-collection-workspaces.md
-│   │   ├── 002-embeddings-as-separate-domain-entity.md
-│   │   ├── 003-structure-aware-markdown-ingestion.md
-│   │   ├── 004-selective-use-of-langchain.md
-│   │   ├── 005-public-api-collection-allowlist.md
-│   │   └── 006-corpus-preparation-and-vector-store-consistency.md
-│   ├── evaluation/
-│   │   ├── generation_results.md
-│   │   └── retrieval_baseline.md
-│   └── corpus.md
-│
-├── src/
-│   └── production_rag/
-│       ├── api/
-│       │   └── query.py
-│       ├── core/
-│       │   └── settings.py
-│       ├── corpus/
-│       │   └── preparation.py
-│       ├── db/
-│       ├── evaluation/
-│       │   ├── answer.py
-│       │   ├── dataset.py
-│       │   ├── generation.py
-│       │   └── retrieval.py
-│       ├── ingestion/
-│       ├── models/
-│       ├── repositories/
-│       ├── schemas/
-│       ├── services/
-│       │   ├── batch_ingestion.py
-│       │   ├── document_ingestion.py
-│       │   ├── embedding.py
-│       │   ├── llm.py
-│       │   ├── qdrant.py
-│       │   ├── rag.py
-│       │   ├── reconciliation.py
-│       │   └── retrieval.py
-│       ├── telemetry.py
-│       └── main.py
-│
-├── tests/
-├── .env.example
-├── alembic.ini
-├── docker-compose.yml
-├── pyproject.toml
-└── uv.lock
+│   ├── evaluation/        Dataset and dated result artifacts
+│   └── raw/               Prepared corpus (not tracked)
+├── docs/                  Architecture, API, configuration, corpus, evaluation, deployment, ADRs
+├── frontend/              React + TypeScript + Vite SPA
+├── scripts/               Corpus acquisition
+├── src/production_rag/    API, ingestion, services, repositories, models, evaluation
+├── tests/                 pytest suite
+├── Dockerfile             Backend container image
+├── docker-compose.yml     Local PostgreSQL, Qdrant, Redis
+├── firebase.json          Firebase Hosting configuration
+├── pyproject.toml         Dependencies and tool configuration
+└── uv.lock                Locked dependencies
 ```
 
----
+## Further reading
 
-## Corpus
-
-The evaluation corpus is the official FastAPI documentation, pinned to a
-specific revision to keep evaluation reproducible.
-
-The upstream documentation is MkDocs source in which code examples live in
-`docs_src/` and are pulled in through include directives. `scripts/acquire_corpus.sh`
-performs a pinned sparse checkout and then prepares a plain-Markdown corpus by
-expanding those includes and normalising MkDocs-only syntax. Preparation is
-deterministic and fails loudly on unresolved includes or unhandled constructs.
-
-Corpus details (scope, exclusions, layout, and `source_uri` stability) are
-documented in:
-
-```text
-docs/corpus.md
-```
-
-The local prepared corpus is stored under:
-
-```text
-data/raw/fastapi/
-```
-
----
-
-## Design decisions
-
-Important architectural decisions are documented as Architecture Decision Records under:
-
-```text
-docs/adr/
-```
-
-Current ADRs cover:
-
-### Multi-collection architecture
-
-Application collections map to independent Qdrant collections.
-
-This allows separate corpora/workspaces to maintain independent vector indexes.
-
-### Embeddings as a separate domain entity
-
-Embeddings are modeled separately from chunks so that embedding model identity and versioning remain explicit.
-
-### Structure-aware Markdown ingestion
-
-Markdown structure is retained during chunking instead of treating the corpus as plain text.
-
-### Selective technology usage
-
-The project avoids adopting frameworks simply because they are common in RAG tutorials.
-
-In particular, the core ingestion pipeline does not depend on LangChain.
-
-### Corpus preparation and vector-store consistency
-
-The pinned documentation is prepared deterministically (MkDocs includes expanded,
-generated reference excluded), the authoritative vector set is defined as the
-embeddings of the latest version of each document produced by the active model,
-runtime retrieval and evaluation share that definition, and reconciliation
-reports or removes only provably non-authoritative Qdrant points.
-
----
-
-## Scope
-
-This project intentionally targets a production-oriented portfolio implementation rather than a full SaaS platform.
-
-### Implemented
-
-* [x] Markdown ingestion
-* [x] Recursive filesystem source
-* [x] SHA-256 content hashing
-* [x] Idempotent document ingestion
-* [x] Document versioning
-* [x] Structure-aware Markdown chunking
-* [x] PostgreSQL persistence
-* [x] Separate embedding entity
-* [x] BGE-small embeddings
-* [x] Qdrant vector storage
-* [x] Qdrant collection validation
-* [x] PostgreSQL retrieval hydration
-* [x] Similarity retrieval
-* [x] DeepSeek LLM integration
-* [x] Asynchronous streaming generation
-* [x] End-to-end RAG orchestration
-* [x] CLI ingestion
-* [x] CLI querying
-* [x] FastAPI `/query` endpoint
-* [x] NDJSON streaming responses
-* [x] Request validation
-* [x] Nonexistent collection handling
-* [x] Application lifecycle management
-* [x] Retrieval evaluation
-* [x] Generation evaluation artifacts
-* [x] OpenTelemetry instrumentation
-* [x] Automated tests
-* [x] Ruff linting
-
----
-
-## Deliberately out of scope
-
-The project deliberately avoids adding distributed infrastructure without a demonstrated requirement.
-
-Currently avoided:
-
-* Celery
-* Kafka
-* event-driven outbox architecture
-* Kubernetes
-* distributed transactions
-* unnecessary caching
-* unnecessary service decomposition
-* large orchestration frameworks for ingestion
-
-Redis is present in Docker Compose but is not currently used by the RAG request path.
-
----
-
-## Current status
-
-The core RAG vertical slice is functional:
-
-```text
-Markdown corpus
-      ↓
-Filesystem ingestion
-      ↓
-Structure-aware chunking
-      ↓
-PostgreSQL metadata
-      ↓
-BGE embeddings
-      ↓
-Qdrant
-      ↓
-Similarity retrieval
-      ↓
-PostgreSQL hydration
-      ↓
-Context construction
-      ↓
-DeepSeek generation
-      ↓
-Streaming FastAPI response
-      ↓
-Evaluation
-      ↓
-OpenTelemetry tracing
-```
-## Roadmap
-
-Potential future work includes:
-
-1. Improve operational documentation.
-2. Tighten ingestion/vector lifecycle consistency.
-3. Expand evaluation methodology and datasets.
-4. Improve failure handling around external services.
-5. Add targeted production-hardening tests.
-6. Revisit caching only if profiling demonstrates a meaningful need.
-7. ~~Add deployment-oriented configuration if the system is eventually deployed.~~
-   Deployed to Cloud Run and Firebase Hosting, with a CD workflow (see
-   `docs/deployment.md`).
-
----
+- [`docs/architecture.md`](docs/architecture.md) — components, request flow, persistence boundary.
+- [`docs/api.md`](docs/api.md) — `POST /query` contract, validation, rate limiting, CORS.
+- [`docs/configuration.md`](docs/configuration.md) — every environment variable.
+- [`docs/corpus.md`](docs/corpus.md) — corpus scope, preparation, exclusions, layout.
+- [`docs/evaluation/`](docs/evaluation/README.md) — datasets, baselines, and provenance.
+- [`docs/deployment.md`](docs/deployment.md) — production environment and the CD workflow.
+- [`docs/adr/`](docs/adr/README.md) — architecture decision records.
 
 ## Contact
 
-* LinkedIn — https://www.linkedin.com/in/sarang-dave/
-* GitHub — https://github.com/S84v
-* Email — davesarang08@gmail.com
+- LinkedIn — <https://www.linkedin.com/in/sarang-dave/>
+- GitHub — <https://github.com/S84v>
+- Email — <davesarang08@gmail.com>

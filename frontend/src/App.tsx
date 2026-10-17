@@ -115,7 +115,7 @@ function App() {
 
       <footer className="app-footer">
         <p className="footer-tagline">
-          DocAssist — Source-grounded Q&amp;A for technical documentation.
+          DocAssist — Source-grounded answers from technical documentation.
         </p>
 
         <ul className="contact" aria-label="Contact">

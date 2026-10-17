@@ -20,8 +20,8 @@ export function ProjectView() {
         </p>
         <p>
           Storage and retrieval are scoped by collection. This demonstration
-          indexes one collection — the official FastAPI tutorial documentation —
-          and the API only serves collections that appear on a fixed allowlist.
+          indexes one collection — the official FastAPI documentation — and the
+          API only serves collections that appear on a fixed allowlist.
         </p>
       </section>
 
@@ -74,10 +74,16 @@ export function ProjectView() {
           reproducible across re-chunking.
         </p>
         <p>
-          Generation quality is assessed by capturing full end-to-end answers for
-          the same question set and reviewing them against reference answers and
-          the retrieved sources. The anchor-based retrieval baseline is still
-          pending a recorded run, so no retrieval metrics are published here.
+          The recorded offline retrieval baseline covers 29 examples with no
+          reranker. At the default depth of five it reports precision 0.13,
+          recall 0.60, hit rate 0.66, and MRR 0.53 — offline evaluation numbers,
+          not live production or answer-quality metrics.
+        </p>
+        <p>
+          Generation quality is assessed separately by capturing full end-to-end
+          answers for the same question set and reviewing them against the
+          reference answers and the retrieved sources; those generation artifacts
+          predate the current corpus and are historical.
         </p>
       </section>
 
@@ -85,21 +91,18 @@ export function ProjectView() {
         <h2>Limitations</h2>
         <ul>
           <li>
-            Deployment is not configured in the repository; the container image
-            is built and run locally.
+            Only the official FastAPI documentation collection is indexed and
+            served; there is no upload or collection-selection interface.
           </li>
           <li>
             The request rate limit is held in memory per instance, so it is not a
             global limit across multiple running instances.
           </li>
           <li>
-            The embedding model is loaded lazily and cached per process, and must
-            be available locally.
+            The embedding model is loaded lazily and cached per process, so the
+            first query after a cold start pays the load cost.
           </li>
-          <li>
-            Only the FastAPI tutorial subset is indexed; answers outside that
-            corpus are unsupported.
-          </li>
+          <li>Retrieval uses a single bi-encoder ranking with no reranker.</li>
           <li>
             Hosted database and vector-store endpoints are configurable, but
             account, quota, and billing state are not verified by the
