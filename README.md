@@ -4,8 +4,6 @@
 
   <h1>DocAssist</h1>
 
-  <hr />
-
   <p><em>Source-grounded answers from technical documentation.</em></p>
 
   <p>
